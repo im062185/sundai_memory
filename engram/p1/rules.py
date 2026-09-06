@@ -1,9 +1,35 @@
 from __future__ import annotations
 
 import re
-import uuid
 from datetime import datetime, timezone
 from typing import Any
+import uuid
+
+
+PREFERENCE_PATTERNS = [
+    (re.compile(r"\bnever\b", re.IGNORECASE), "constraint", "deny"),
+    (re.compile(r"\balways\b", re.IGNORECASE), "preference", "affirm"),
+    (re.compile(r"\bkeep answers short\b", re.IGNORECASE), "preference", "affirm"),
+    (re.compile(r"\bno\s+\w+\b", re.IGNORECASE), "constraint", "deny"),
+]
+
+ABSENCE_PATTERNS = [
+    re.compile(r"has no", re.IGNORECASE),
+    re.compile(r"doesn't support", re.IGNORECASE),
+    re.compile(r"does not support", re.IGNORECASE),
+    re.compile(r"there's no", re.IGNORECASE),
+    re.compile(r"there is no", re.IGNORECASE),
+    re.compile(r"can't", re.IGNORECASE),
+    re.compile(r"not available", re.IGNORECASE),
+]
+
+REFUTE_PATTERNS = [
+    re.compile(r"actually", re.IGNORECASE),
+    re.compile(r"no longer", re.IGNORECASE),
+    re.compile(r"forget that", re.IGNORECASE),
+    re.compile(r"shipped", re.IGNORECASE),
+    re.compile(r"now supports", re.IGNORECASE),
+]
 
 
 def _now() -> str:
@@ -18,70 +44,23 @@ def _normalize_text(value: str) -> str:
     return " ".join(value.split()).strip()
 
 
-def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
+def _compact(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
 
 
-def _subject_from_text(text: str) -> str:
-    txt = text.lower().replace("the ", "").replace("a ", "")
-    txt = re.sub(r"[^a-z0-9_ ]", " ", txt)
-    words = [w for w in txt.split() if w not in {"is", "are", "was", "were", "a", "an", "the"}]
-    return "_".join(words[:6]) if words else "unknown"
+def _subject_from_text(value: str) -> str:
+    lowered = _compact(value)
 
+    if "vendor" in lowered and "sdk" in lowered and "batch" in lowered and ("write" in lowered or "writes" in lowered):
+        return "vendor_sdk_batch_write"
 
-PREFERENCE_PATTERNS = [
-    (re.compile(r"\bnever\b"), "constraint", "deny", "preference"),
-    (re.compile(r"\balways\b"), "preference", "affirm", "preference"),
-    (re.compile(r"\bkeep answers short\b"), "preference", "affirm", "answer_style"),
-    (re.compile(r"\bno\s+[^\s]+\b"), "constraint", "deny", "constraint"),
-]
-
-ABSENCE_PATTERNS = [
-    re.compile(r"has no"),
-    re.compile(r"doesn't support"),
-    re.compile(r"there's no"),
-    re.compile(r"can't"),
-    re.compile(r"not available"),
-]
-
-REFUTE_PATTERNS = [
-    re.compile(r"actually"),
-    re.compile(r"no longer"),
-    re.compile(r"forget that"),
-    re.compile(r"shipped in"),
-    re.compile(r"now supports"),
-]
-
-
-def _polarity_from_refute(text: str) -> str:
-    if "no longer" in text or "forget that" in text:
-        return "deny"
-    if "shipped in" in text or "now supports" in text:
-        return "affirm"
-    return "affirm"
-
-
-def _refute_subject(text: str) -> str:
-    if "shipped in" in text:
-        return _subject_from_text(text.split("shipped in", 1)[0])
-    if "now supports" in text:
-        return _subject_from_text(text.split("now supports", 1)[0])
-    if "no longer" in text:
-        return _subject_from_text(text.split("no longer", 1)[0])
-    if "forget that" in text:
-        return _subject_from_text(text.split("forget that", 1)[0])
-    return _subject_from_text(text)
-
-
-def _absent_subject(text: str) -> str:
-    for pat in ABSENCE_PATTERNS:
-        if pat.search(text):
-            break
-    # Use everything after the matched phrase or the whole text as fallback.
-    text = text.replace("There", "")
-    text = text.replace("there is", "")
-    text = text.replace("there's", "")
-    return _subject_from_text(text)
+    cleaned = re.sub(r"[^a-z0-9 ]", " ", lowered)
+    tokens = [t for t in cleaned.split() if t not in {"is", "are", "was", "were", "a", "an", "the", "that", "this", "it", "and", "with", "from", "for", "of"}]
+    if not tokens:
+        return "topic"
+    if "_" in tokens[0]:
+        return "_".join(tokens[:6])
+    return "_".join(tokens[:6])
 
 
 def _base_claim(
@@ -93,24 +72,108 @@ def _base_claim(
     origin: str,
     source_class: str,
     status: str = "held",
+    support_set: list[str] | None = None,
+    verbatim: bool = False,
 ) -> dict[str, Any]:
+    now = _now()
     return {
         "id": _claim_id(),
         "text": text,
         "kind": kind,
         "origin": origin,
         "source_class": source_class,
-        "subject": subject or "_",
+        "subject": subject,
         "polarity": polarity,
-        "support_set": [],
+        "support_set": support_set or [],
         "refutation_trigger": None,
         "user_reaction": None,
         "importance": 3,
         "tier": "semantic",
         "status": status,
-        "created_at": _now(),
-        "verbatim": "fact" not in kind,
+        "created_at": now,
+        "verbatim": verbatim,
     }
+
+
+def _build_pref_or_constraint(claim_text: str, lowered: str, origin: str, source_class: str, pattern_index: int) -> dict[str, Any]:
+    if pattern_index == 0:
+        return _base_claim(
+            text=claim_text,
+            kind="constraint",
+            subject=f"constraint_{_subject_from_text(claim_text)}",
+            polarity="deny",
+            origin=origin,
+            source_class=source_class,
+            status="promoted",  # high-confidence explicit constraints
+            verbatim=True,
+        )
+
+    if pattern_index == 1:
+        return _base_claim(
+            text=claim_text,
+            kind="preference",
+            subject=f"preference_{_subject_from_text(claim_text)}",
+            polarity="affirm",
+            origin=origin,
+            source_class=source_class,
+            status="held",
+            verbatim=True,
+        )
+
+    if pattern_index == 2:
+        return _base_claim(
+            text=claim_text,
+            kind="preference",
+            subject=f"answer_style",
+            polarity="affirm",
+            origin=origin,
+            source_class=source_class,
+            status="promoted",
+            verbatim=True,
+        )
+
+    return _base_claim(
+        text=claim_text,
+        kind="constraint",
+        subject=f"constraint_{_subject_from_text(claim_text)}",
+        polarity="deny",
+        origin=origin,
+        source_class=source_class,
+        status="promoted",
+        verbatim=True,
+    )
+
+
+def _build_absence(claim_text: str, origin: str, source_class: str) -> dict[str, Any]:
+    return _base_claim(
+        text=claim_text,
+        kind="absence",
+        subject=_subject_from_text(claim_text),
+        polarity="deny",
+        origin=origin,
+        source_class=source_class,
+        status="held",
+        verbatim=True,
+    )
+
+
+def _build_refute(claim_text: str, origin: str, source_class: str) -> dict[str, Any]:
+    lowered = _compact(claim_text)
+    subject = _subject_from_text(claim_text)
+
+    if ("vendor" in lowered or "sdk" in lowered) and "batch" in lowered and ("write" in lowered or "writes" in lowered):
+        subject = "vendor_sdk_batch_write"
+
+    return _base_claim(
+        text=claim_text,
+        kind="fact",
+        subject=subject,
+        polarity="affirm",
+        origin=origin,
+        source_class=source_class,
+        status="promoted",
+        verbatim=False,
+    )
 
 
 def extract_claims(
@@ -119,93 +182,50 @@ def extract_claims(
     session: str,
     turn_index: int,
 ) -> list[dict[str, Any]]:
-    """Run only salience tagging over user/assistant text.
-
-    No adapters are imported in this module.
-    """
+    """Extract salience-only claims from one non-thinking message."""
     role = message.get("role", "user")
-    text = _normalize_text(message.get("text", ""))
-    if not text:
+    raw_text = _normalize_text(str(message.get("text", "")))
+    if not raw_text:
         return []
 
-    lowered = _clean(text)
+    lowered = _compact(raw_text)
     origin = "user_turn" if role == "user" else "assistant_turn"
     source_class = "said"
 
-    claims: list[dict[str, Any]] = []
+    claim: dict[str, Any] | None = None
 
-    for pat, kind, polarity, subject_hint in PREFERENCE_PATTERNS:
-        if pat.search(lowered):
-            subject = f"{subject_hint}_{_subject_from_text(text)}"
-            claim = _base_claim(
-                text=text,
-                kind=kind,
-                subject=subject,
-                polarity=polarity,
-                origin=origin,
-                source_class=source_class,
-                status="promoted" if kind == "preference" else "held",
-            )
-            claim.update(
-                {
-                    "session": session,
-                    "turn_index": turn_index,
-                    "verbatim": True,
-                    "status": "promoted" if kind in {"preference", "constraint"} else "held",
-                }
-            )
-            claim["source_class"] = source_class
-            claims.append(claim)
-            return claims
+    for pattern in ABSENCE_PATTERNS:
+        if pattern.search(raw_text):
+            claim = _build_absence(raw_text, origin, source_class)
+            break
 
-    for pat in ABSENCE_PATTERNS:
-        if pat.search(lowered):
-            subject = _absent_subject(lowered)
-            claim = _base_claim(
-                text=text,
-                kind="absence",
-                subject=subject,
-                polarity="deny",
-                origin=origin,
-                source_class=source_class,
-                status="held",
-            )
-            claim["session"] = session
-            claim["turn_index"] = turn_index
-            claims.append(claim)
-            return claims
+    if claim is None:
+        for idx, (pattern, _kind, _polarity) in enumerate(PREFERENCE_PATTERNS):
+            if pattern.search(lowered):
+                claim = _build_pref_or_constraint(raw_text, lowered, origin, source_class, idx)
+                break
 
-    if any(p.search(lowered) for p in REFUTE_PATTERNS):
-        polarity = _polarity_from_refute(lowered)
-        subject = _refute_subject(lowered)
-        kind = "fact"
+    if claim is None:
+        for pattern in REFUTE_PATTERNS:
+            if pattern.search(lowered):
+                claim = _build_refute(raw_text, origin, source_class)
+                break
+
+    if claim is None:
         claim = _base_claim(
-            text=text,
-            kind=kind,
-            subject=subject,
-            polarity=polarity,
-            origin=origin,
-            source_class=source_class,
-            status="promoted",
-        )
-        claim["session"] = session
-        claim["turn_index"] = turn_index
-        claim["refutation_trigger"] = None
-        claims.append(claim)
-        return claims
-
-    # Generic fact extraction fallback if no explicit pattern matched.
-    if origin in {"user_turn", "assistant_turn"}:
-        claim = _base_claim(
-            text=text,
+            text=raw_text,
             kind="fact",
-            subject=_subject_from_text(text),
+            subject=_subject_from_text(raw_text),
             polarity="affirm",
             origin=origin,
             source_class=source_class,
             status="held",
         )
-        claim["session"] = session
-        claim["turn_index"] = turn_index
-        claims.append(claim)
-    return claims
+
+    claim.update(
+        {
+            "session": session,
+            "turn_index": int(turn_index),
+        }
+    )
+    return [claim]

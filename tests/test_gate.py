@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from engram.p2 import gate as p2_gate
 from engram.p2.gate import promote
 
 
@@ -40,6 +41,7 @@ class InMemoryStore:
 
 def test_gate_cases_trigger_expected_rules():
     data = json.loads(open("tests/fixtures/gate_cases.json", encoding="utf-8").read())["cases"]
+    p2_gate.ABSENCE_QUESTION.clear()
     store = InMemoryStore()
 
     for item in data:
