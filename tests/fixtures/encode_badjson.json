@@ -1,0 +1,8 @@
+{
+  "name": "encode_badjson",
+  "note": "Model returned prose instead of JSON. The whole response is dropped and counted.",
+  "match": {
+    "session": "badjson"
+  },
+  "response": "Sure! Here are the candidates I found: the user prefers short answers."
+}
