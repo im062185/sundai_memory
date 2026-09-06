@@ -40,36 +40,66 @@ def capture(state):
     if not state["messages"]:
         # CLI / start / micro: consolidate the episodes appended since the last consolidation.
         #
-        # Compare instants, never the ISO strings. The two writers disagree on
-        # format — episodes.jsonl carries "…50.088779+00:00", consolidation.jsonl
-        # carries "…50Z" — and '.' (46) sorts before 'Z' (90), so a string
-        # compare calls an episode written *after* the marker older than it.
-        # The cursor only moves forward, so those episodes were skipped forever.
+        # The cursor is a LINE COUNT, not a timestamp. episodes.jsonl is strictly
+        # append-only (server.py `_append`), so "how many lines have been consumed"
+        # is exact and needs no clock. Timestamps were tried and were wrong twice
+        # over: the two writers disagree on format ("…50.088779+00:00" from
+        # datetime.isoformat vs "…50Z" from time.strftime) and '.' (46) sorts
+        # before 'Z' (90), so a string compare called an episode written within
+        # the same second as the marker *older* than it and the cursor — which
+        # only moves forward — skipped it forever. Parsing the stamps fixes that
+        # but not the rest: the marker is written after the whole DAG has run, so
+        # any turn appended while encode() was waiting on the model fell into the
+        # gap, and whole-second truncation re-captured a turn on the next run.
+        # A line count has none of these failure modes.
         #
-        # Known and deliberate: dag.py stamps the marker at whole-second
-        # resolution, so an episode written later in the same second as the
-        # previous run's marker is captured once more on the next run. That is
-        # the safe direction — merge() and the gate dedupe a repeat, nothing
-        # dedupes a memory that was never captured — but it means `captured`
-        # can overcount by the size of one turn. Do not read it as exact.
+        # dag.py advances the cursor only after every node has run, so a crash
+        # mid-consolidation re-captures rather than loses the batch.
         import json
-        log, since = state["out"] / "episodes.jsonl", None
-        cons = state["out"] / "consolidation.jsonl"
-        if cons.exists():
-            lines = cons.read_text().splitlines()
-            if lines:
-                since = _instant(json.loads(lines[-1]).get("ts"))
-        if log.exists():
-            for line in log.read_text().splitlines():
-                try:
-                    r = json.loads(line)
-                except Exception:
-                    continue
-                ts = _instant(r.get("ts"))
-                # An episode with no parsable ts is captured, not dropped: losing a
-                # turn is worse than consolidating it twice (merge() dedupes).
-                if r.get("text") and (since is None or ts is None or ts > since):
-                    eps.append({"turn_index": r.get("turn_index", 0), "role": r.get("role"), "text": r["text"], "thinking": r.get("thinking")})
+        log = state["out"] / "episodes.jsonl"
+        lines = log.read_text().splitlines() if log.exists() else []
+        cursor = state["out"] / "capture_cursor.json"
+        consumed, seeded = 0, cursor.exists()
+        if seeded:
+            try:
+                consumed = int(json.loads(cursor.read_text()).get("lines", 0))
+            except (ValueError, TypeError, json.JSONDecodeError):
+                consumed = 0
+        if consumed > len(lines):
+            consumed = 0  # the log was rotated or `out/` rebuilt under us; re-read it
+        pending = lines[consumed:]
+        if not seeded:
+            # First run against an out/ that predates the cursor: fall back to the
+            # old marker so an existing store does not re-consolidate its history.
+            # After this run the line count takes over and the fallback is dead.
+            since = None
+            cons = state["out"] / "consolidation.jsonl"
+            if cons.exists():
+                prior = cons.read_text().splitlines()
+                if prior:
+                    since = _instant(json.loads(prior[-1]).get("ts"))
+            if since is not None:
+                keep = []
+                for line in pending:
+                    try:
+                        ts = _instant(json.loads(line).get("ts"))
+                    except Exception:
+                        ts = None
+                    # An episode with no parsable ts is captured, not dropped: losing
+                    # a turn is worse than consolidating it twice (merge() dedupes).
+                    if ts is None or ts > since:
+                        keep.append(line)
+                pending = keep
+        for line in pending:
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if r.get("text"):
+                eps.append({"turn_index": r.get("turn_index", 0), "role": r.get("role"), "text": r["text"], "thinking": r.get("thinking")})
+        # Only the lines actually read are claimed. Anything appended from here on
+        # is the next run's work, which is what closes the mid-run race.
+        state["cursor_lines"] = len(lines)
         state["episodes"] = eps
         state["counts"]["captured"] = len(eps)
         return

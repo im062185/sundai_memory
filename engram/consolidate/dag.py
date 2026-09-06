@@ -34,4 +34,9 @@ def run(store, messages: list, *, reason: str = "cli", out: pathlib.Path = pathl
     state["out"].mkdir(parents=True, exist_ok=True)
     with (state["out"] / "consolidation.jsonl").open("a") as f:
         f.write(json.dumps(rec) + "\n")
+    # Advance capture()'s cursor only now, after every node has run. A crash
+    # anywhere above leaves it where it was, so the batch is re-consolidated
+    # rather than lost — merge() and the gate dedupe the repeat.
+    if "cursor_lines" in state:
+        (state["out"] / "capture_cursor.json").write_text(json.dumps({"lines": state["cursor_lines"]}) + "\n")
     return {"digest": digest, "counts": state["counts"]}

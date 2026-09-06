@@ -29,6 +29,26 @@ hit exactly this in the fresh clone (killed at 60s by a watchdog, `exit=142` =
 SIGALRM). After `npm ci` the identical command exits 0. If a turn hangs and
 `out/` was never created, this is why — check `pi-extension/node_modules` first.
 
+**That signature has a second cause, and it is not ours.** At 19:20 on 2026-09-06
+this machine started hanging at pi *session startup* with the identical
+symptom — empty stdout, empty stderr, no `out/`, killed at the watchdog. It
+reproduces with the extension out of the picture entirely:
+
+```bash
+cd /tmp                                    # no .pi/extensions here at all
+PI_OFFLINE=1 PI_CODING_AGENT_DIR=/tmp/pi-demo \
+  pi --mode json -a --no-session --model lmstudio/probe-model -p "hello"   # hangs
+pi --version                                                               # 0.85.1, instant
+```
+
+No extension, offline, no session file, a different config dir, and a probe
+server that answers a hand-rolled `curl` in milliseconds — still hangs, and the
+server log shows **no request ever arrived**. The same command exited 0 at
+19:18. So: `pi --version` returning promptly does **not** mean pi will start a
+session. Before going on stage, run one throwaway turn and watch for a reply;
+if it hangs, the fallback in **2b** below needs no pi at all, and
+`python -m engram consolidate` / `python -m engram report` are unaffected.
+
 There is no build step for the extension. `.pi/extensions/engram.ts` is a
 one-line re-export of `pi-extension/src/index.ts` and pi loads the TypeScript
 directly; `npx tsc --noEmit` is a check, not a compile.
