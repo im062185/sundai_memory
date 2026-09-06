@@ -1,0 +1,5 @@
+{"role":"user","text":"I'm building this project as a memory layer for pi, with capture-first behavior.","session":"session1","turn_index":0,"thinking":null}
+{"role":"assistant","text":"Noted. I'll remember that this is a project about a memory layer for pi. I can keep notes in a compact form.","session":"session1","turn_index":1,"thinking":null}
+{"role":"user","text":"We want the deploy target to be a 4B local model workflow on LM Studio.","session":"session1","turn_index":2,"thinking":null}
+{"role":"user","text":"I never want TypeScript in the organ codebase.","session":"session1","turn_index":3,"thinking":null}
+{"role":"assistant","text":"Understood, no TypeScript in the organ. I'll keep implementation notes concise.
