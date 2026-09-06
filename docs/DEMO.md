@@ -290,11 +290,14 @@ reach the scorecard.
 
 ## Defects found while rehearsing (for lane A / lane B, not fixed here)
 
-1. **`pi-extension/src/index.ts:64`** — when the Engram server exits, the
+1. ~~**`pi-extension/src/index.ts:64`** — when the Engram server exits, the
    handler calls `ctx.ui.notify` on a context pi has already torn down, and pi
-   dies with `ExtensionRunner.assertActive`. It happens *after* the turn's
-   output, so nothing is lost, but every headless run exits non-zero and the TUI
-   shows a stack trace on quit. Guard the notify, or drop it on shutdown.
+   dies with `ExtensionRunner.assertActive`. Every headless run exits
+   non-zero.~~ **Fixed by lane A** (`unref()` on the server child and its
+   pipes, `pi-extension/src/index.ts:26`). Re-checked on the merged tree with
+   the echo server: two headless sessions, both `exit=0`, stderr empty, and
+   session 2 still receives the claim session 1 wrote —
+   `memory: 1 claim(s) injected · first → - [said] We deploy to Vercel. …`.
 2. **Held claims are unreachable.** The absence claim never becomes retrievable,
    so the correction beat injects nothing. If that is intended, the demo should
    not imply the model sees what it is correcting.

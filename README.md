@@ -23,7 +23,7 @@ command in it was run on this machine and every screen is copied from that run.
 
 ## What was built
 
-**The organ fires structurally.** A 138-line TypeScript pi extension
+**The organ fires structurally.** A 141-line TypeScript pi extension
 (`pi-extension/src/index.ts`) spawns Engram as a Python stdio server and wires
 four hooks: `session_start → consolidate`, `before_agent_start → recall` (which
 injects a `Memory (provenance-tagged):` message), `agent_end → remember` for the
@@ -158,22 +158,23 @@ them would measure the corpus, not the retriever — and the skipped count is
 printed and written into `out/results.json`. Closing this needs a corpus that
 states the other facts, or a query set cut down to the corpus.
 
-**Four defects found while rehearsing the demo**, written down rather than
-patched — three live in other lanes' code and the second is pi's own behaviour
+**Three defects found while rehearsing the demo**, written down rather than
+patched — two live in other lanes' code and the first is pi's own behaviour
 (details in [docs/DEMO.md](docs/DEMO.md)):
 
-1. `pi-extension/src/index.ts:64` — when the Engram server exits, the handler
-   calls `ctx.ui.notify` on a context pi has already torn down, and pi dies with
-   `ExtensionRunner.assertActive`. It happens after the turn's output, so nothing
-   is lost, but every headless run exits non-zero.
-2. **An untrusted project silently has no memory.** pi loads `.pi/extensions/*.ts`
+1. **An untrusted project silently has no memory.** pi loads `.pi/extensions/*.ts`
    only after the project is trusted, and `-p` / `--mode json` never prompt. Pass
    `-a`, or the demo runs with an empty memory and no error.
-3. **Held claims are unreachable**, so on the correction turn `recall` injects
+2. **Held claims are unreachable**, so on the correction turn `recall` injects
    nothing — the model is corrected without seeing what it is correcting.
-4. **`export_markdown()` renders nothing**: no claim on the CUJ journey is
+3. **`export_markdown()` renders nothing**: no claim on the CUJ journey is
    assigned tier `always`, so `engram explain`'s "About you" and "Standing notes"
    are empty even with six promoted claims.
+
+A fourth, the extension killing pi at exit, was **fixed by lane A** in
+`unref()`-ing the server child (`pi-extension/src/index.ts:26`) and is no longer
+open: re-rehearsed on the merged tree, both headless sessions exit 0 with an
+empty stderr, and session 2 still receives the claim written in session 1.
 
 **The component bench is not idempotent.** Rerun it without `rm -rf out` and
 the sqlite row changes — the store persists, the gate dedups the reseed, so the
