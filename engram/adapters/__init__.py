@@ -1,4 +1,12 @@
-"""Store adapters. REGISTRY is filled by lane B; lane A owns base.py and null.py."""
-from .base import Claim, Store, RecallHit  # noqa: F401
+"""Store adapters."""
+from .base import Claim, Store, RecallHit
+from .sqlite import SQLiteStore
+from .vector import VectorStore
 
-REGISTRY: dict[str, type] = {}
+
+REGISTRY: dict[str, type[Store]] = {
+    "sqlite": SQLiteStore,
+    "vector": VectorStore,
+}
+
+__all__ = ["REGISTRY", "Claim", "Store", "RecallHit", "SQLiteStore", "VectorStore"]
