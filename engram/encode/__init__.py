@@ -1,5 +1,12 @@
-# 사후 관점 인코더 패키지의 공개 진입점
-"""Lane C, Processing II. The DAG imports `engram.encode.encode:encode`."""
-from engram.encode.encode import EncodeStats, encode
+# 사후 관점 인코더 패키지
+"""Lane C, Processing II.
 
-__all__ = ["encode", "EncodeStats"]
+Deliberately empty of re-exports. The DAG reaches the encoder as
+`dag._opt("engram.encode.encode", "encode")`, and re-exporting the name `encode`
+here would shadow the submodule of the same name: `import engram.encode.encode`
+would then bind the *function*, not the module, and `mod.LAST_STATS` would fail.
+
+Import from the module:
+
+    from engram.encode.encode import encode, EncodeStats
+"""
