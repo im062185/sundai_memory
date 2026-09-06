@@ -1,0 +1,8 @@
+{
+  "name": "encode_invalid",
+  "note": "Malformed model output: five entries must be dropped and counted, one survives.",
+  "match": {
+    "default": true
+  },
+  "response": "{\"candidates\": [\"not an object\", {\"text\": \"Thinking must be inferred.\", \"kind\": \"fact\", \"origin\": \"assistant_thinking\", \"source_class\": \"said\", \"subject\": \"g9\", \"polarity\": \"affirm\"}, {\"text\": \"Assistant turn cannot be inferred.\", \"kind\": \"fact\", \"origin\": \"assistant_turn\", \"source_class\": \"inferred\", \"subject\": \"g2\", \"polarity\": \"affirm\"}, {\"text\": \"Kind is not in the enum.\", \"kind\": \"nonsense\", \"origin\": \"user_turn\", \"source_class\": \"said\", \"subject\": \"badkind\", \"polarity\": \"affirm\"}, {\"text\": \"\", \"kind\": \"fact\", \"origin\": \"user_turn\", \"source_class\": \"said\", \"subject\": \"empty\", \"polarity\": \"affirm\"}, {\"text\": \"A valid survivor claim.\", \"kind\": \"fact\", \"verbatim\": false, \"importance\": 3, \"subject\": \"survivor\", \"polarity\": \"affirm\", \"entities\": [], \"origin\": \"user_turn\", \"source_class\": \"said\", \"user_reaction\": null, \"supersedes\": null, \"source_turn_index\": 0}]}"
+}

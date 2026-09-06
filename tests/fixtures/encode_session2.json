@@ -1,0 +1,8 @@
+{
+  "name": "encode_session2",
+  "note": "Recorded encoder output for session2.jsonl. Candidate 2 is the hindsight case: the model guessed 'approving' but the following human turn is a correction.",
+  "match": {
+    "session": "session2"
+  },
+  "response": "{\"candidates\": [{\"text\": \"The SDK shipped batch writes in 3.4.\", \"kind\": \"capability\", \"verbatim\": false, \"importance\": 5, \"subject\": \"batch-write endpoint\", \"polarity\": \"affirm\", \"entities\": [\"SDK\"], \"origin\": \"user_turn\", \"source_class\": \"said\", \"user_reaction\": null, \"supersedes\": \"clm_absence001\", \"source_turn_index\": 2}, {\"text\": \"The assistant claims to remember the core facts and preferences.\", \"kind\": \"episode\", \"verbatim\": false, \"importance\": 2, \"subject\": \"memory recall claim\", \"polarity\": \"affirm\", \"entities\": [], \"origin\": \"assistant_turn\", \"source_class\": \"said\", \"user_reaction\": \"approving\", \"supersedes\": null, \"source_turn_index\": 1}]}"
+}
