@@ -39,6 +39,17 @@ def encode(state):
         if p.exists():
             persona = p.read_text()
         state["candidates"] = list(fn(state["episodes"], persona, []) or [])
+    else:  # fallback until lane C merges: salience rules over the captured turns
+        extract = _opt("engram.p1.rules", "extract_claims")
+        route = _opt("engram.p3.router", "route_claim")
+        if extract:
+            for ep in state["episodes"]:
+                if ep["role"] != "user":
+                    continue
+                for c in extract({"role": "user", "text": ep["text"]}, session="consolidate", turn_index=ep["turn_index"]) or []:
+                    if route:
+                        c["tier"] = route(c)
+                    state["candidates"].append(c)
     state["counts"]["encoded"] = len(state["candidates"])
 
 
