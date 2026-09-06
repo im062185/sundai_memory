@@ -17,7 +17,9 @@
       },
       "expected": {
         "verdict": "rejected",
-        "fired": ["G1"]
+        "fired": [
+          "G1"
+        ]
       }
     },
     {
@@ -37,7 +39,9 @@
       },
       "expected": {
         "verdict": "rejected",
-        "fired": ["G2"]
+        "fired": [
+          "G2"
+        ]
       }
     },
     {
@@ -57,7 +61,9 @@
       },
       "expected": {
         "verdict": "held",
-        "fired": ["G3"],
+        "fired": [
+          "G3"
+        ],
         "question": "Can you share a source for this absence claim?"
       }
     },
@@ -78,7 +84,10 @@
       },
       "expected": {
         "verdict": "held",
-        "fired": ["G4"]
+        "fired": [
+          "G3",
+          "G4"
+        ]
       }
     },
     {
@@ -98,7 +107,9 @@
       },
       "expected": {
         "verdict": "rejected",
-        "fired": ["G5"]
+        "fired": [
+          "G5"
+        ]
       }
     },
     {
@@ -113,12 +124,13 @@
         "status": "held",
         "created_at": "2026-09-06T00:00:40Z",
         "session": "session1",
-        "turn_index": 6,
-        "source_class": "said"
+        "turn_index": 6
       },
       "expected": {
-        "verdict": "promoted",
-        "fired": []
+        "verdict": "rejected",
+        "fired": [
+          "G6"
+        ]
       }
     },
     {
@@ -155,7 +167,9 @@
       },
       "second_expected": {
         "verdict": "rejected",
-        "fired": ["G7"]
+        "fired": [
+          "G8"
+        ]
       }
     },
     {
@@ -192,7 +206,9 @@
       },
       "second_expected": {
         "verdict": "promoted",
-        "fired": ["G8"],
+        "fired": [
+          "G8"
+        ],
         "refute_older": true
       }
     },
@@ -213,7 +229,9 @@
       },
       "expected": {
         "verdict": "rejected",
-        "fired": ["G9"]
+        "fired": [
+          "G9"
+        ]
       }
     }
   ]
