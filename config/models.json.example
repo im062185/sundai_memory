@@ -1,0 +1,18 @@
+{
+  "providers": {
+    "lmstudio": {
+      "baseUrl": "http://localhost:1234/v1",
+      "api": "openai-completions",
+      "apiKey": "lmstudio",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "supportsStore": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        { "id": "REPLACE_WITH_LM_STUDIO_MODEL_ID", "reasoning": true }
+      ]
+    }
+  }
+}

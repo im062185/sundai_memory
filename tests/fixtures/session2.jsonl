@@ -1,0 +1,5 @@
+{"role":"user","text":"When I open this project again, I know you remember what we decided on Monday.","session":"session2","turn_index":0,"thinking":null}
+{"role":"assistant","text":"Yes — I remember the core facts and your preferences. What changed first?","session":"session2","turn_index":1,"thinking":null}
+{"role":"user","text":"Oh, correction: the SDK shipped batch writes in 3.4.","session":"session2","turn_index":2,"thinking":null}
+{"role":"assistant","text":"Thanks — I’ve updated that memory now.","session":"session2","turn_index":3,"thinking":null}
+{"role":"user","text":"What do you actually remember about this project?","session":"session2","turn_index":4,"thinking":null}

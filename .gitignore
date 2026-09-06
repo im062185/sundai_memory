@@ -1,3 +1,11 @@
-results/
+out/
+.memory/
+.env
 __pycache__/
 *.pyc
+.pytest_cache/
+node_modules/
+pi-extension/dist/
+.DS_Store
+.venv/
+bench/data/

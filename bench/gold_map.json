@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "note": "fact key -> TEXT PATTERNS, not claim ids. Claim ids are random per run (engram/p1/rules.py:40 is f\"clm_{uuid.uuid4().hex[:12]}\"), so a literal id written here would be stale the moment it was written. bench/component.py seeds each store by replaying tests/fixtures/session1.jsonl + session2.jsonl through `remember`, observes what the gate writes, and matches these patterns (case-insensitive substring, any-of) against those claim texts to get this run's ids. Gold is resolved per store, against what that store actually holds.",
+  "corpus": "tests/fixtures/session1.jsonl, tests/fixtures/session2.jsonl (lane B, the CUJ §3 journey: 12 claims written, 1 refuted)",
+  "resolves": "6 of the 25 fact keys in bench/queries.json. The other 19 name facts the two fixture sessions never state. They are left out deliberately: a fact key mapped to a claim that does not assert it would turn a corpus gap into a retrieval score. bench/component.py SKIPS any query with an unresolved key rather than scoring it 0.00, and prints how many it skipped.",
+  "findings": [
+    "pref.short_answers is deliberately unresolved. The user states it in the same turn as the absence claim (session1 turn 5: 'Keep answers short when summarizing and coaching. The vendor SDK has no batch-write endpoint.'), and engram/p1/rules.py tags that whole turn as ONE claim with kind=absence and subject=vendor_sdk_batch_write. Session 2's correction then refutes it — and takes the preference down with it. No promoted claim in the store carries this preference, so there is no id to point at. This is a finding about the tagger's turn-level granularity, not a gap in the query set.",
+    "fact.vendor_sdk and fact.sdk_batch_write_34 resolve to the SAME claim. The fixtures assert the vendor SDK's existence only inside the correction sentence, so the two keys collapse onto one id. Recorded here rather than silently deduped in code.",
+    "prov.absence_source is unresolved. The nearest claim is the assistant's clarifying question ('verify that against SDK docs or by a quick check?'), which asks about provenance rather than asserting it. Mapping it there would score a retriever for finding a question."
+  ],
+  "facts": {
+    "fact.project": [
+      "memory layer for pi"
+    ],
+    "fact.model": [
+      "4b local model workflow on lm studio"
+    ],
+    "pref.no_typescript": [
+      "never want typescript"
+    ],
+    "absence.sdk_batch_write": [
+      "has no batch-write endpoint"
+    ],
+    "fact.sdk_batch_write_34": [
+      "shipped batch writes in 3.4"
+    ],
+    "fact.vendor_sdk": [
+      "shipped batch writes in 3.4"
+    ]
+  }
+}

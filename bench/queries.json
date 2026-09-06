@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "provisional": true,
+  "provisional_reason": "Lane B's tests/fixtures (claims.json, session1.jsonl, session2.jsonl) were not merged into build/engram-v2 when this file was written, so there are no claim ids to point at. Each query therefore carries stable FACT KEYS in gold_facts / refuted_facts instead of claim ids. Fill bench/gold_map.json (fact key -> [claim ids]) once lane B merges and pass it to metrics.load_queries(); the set stays provisional until every key resolves, and engram/report/render.py prints 'provisional' next to any number derived from it.",
+  "source": "docs/CUJ-engram-v2.md §3 (the Monday/Wednesday/Friday journey) and the design conversation those fixtures are drawn from (CUJ §2: 'the project under discussion is this one').",
+  "fact_keys": {
+    "fact.project": "The project is Engram, a self-managing memory for a builder's agent.",
+    "fact.chat_surface": "The chat surface is pi (pi.dev), the terminal coding agent, in interactive mode.",
+    "fact.deploy_target": "Engram runs as a local Python process (stdio server) spawned by a thin pi extension.",
+    "fact.model": "The chat model is a ~4B open-weight model served by LM Studio.",
+    "fact.judge": "claude-sonnet-5 judges accuracy, via the Anthropic API, as an offline batch.",
+    "fact.benchmark": "The outcome benchmark is a LongMemEval slice covering all six categories.",
+    "fact.store": "Storage is one SQLite file plus markdown exports, behind the frozen Store interface.",
+    "fact.vendor_sdk": "The project uses a vendor SDK.",
+    "pref.no_typescript": "Preference: no TypeScript.",
+    "pref.short_answers": "Preference: keep answers short.",
+    "absence.sdk_batch_write": "Stated absence: the vendor SDK has no batch-write endpoint. REFUTED in session 2.",
+    "prov.absence_source": "Provenance of the absence claim: from the SDK docs, a while ago — not from trying it.",
+    "fact.sdk_batch_write_34": "Correction: the SDK shipped batch writes in 3.4.",
+    "rule.structural_firing": "Memory fires from pi lifecycle hooks, never at the model's request.",
+    "rule.never_hard_delete": "Never hard-delete; refutation sets status and valid_to.",
+    "rule.only_p2_writes": "Only the p2 gate writes to stores.",
+    "fact.capture_first": "Capture first: every turn is appended verbatim to the episodic log before anything judges it.",
+    "fact.consolidation_dag": "Consolidation is an explicit acyclic DAG run between sessions.",
+    "fact.evolution_generations": "One generation per consolidation: mutate, replay, keep the best, revert on regression.",
+    "rule.one_clarifying_question": "At most one clarifying question per session, only for an under-provenanced absence claim.",
+    "fact.vector_a3": "The naive vector arm keeps returning the refuted claim (A-3).",
+    "fact.scorecard_five": "The scorecard is five metrics in order: speed, accuracy, tokens, precision, recall.",
+    "fact.no_network_chat_loop": "The chat loop runs with no network; only the judge needs a key.",
+    "fact.recall_token_budget": "Recall is capped by a token budget, ENGRAM_RECALL_TOKENS, default 400.",
+    "fact.micro_sleep": "Consolidation also runs every N turns (ENGRAM_MICRO_SLEEP, default 10)."
+  },
+  "categories": [
+    "project-fact",
+    "preference",
+    "knowledge-update",
+    "abstention",
+    "temporal",
+    "provenance",
+    "multi-session",
+    "procedure"
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "text": "What am I building here, and what does it run on top of?",
+      "gold_facts": ["fact.project", "fact.chat_surface"],
+      "category": "project-fact"
+    },
+    {
+      "id": "q02",
+      "text": "Where does the memory process actually run, and how does pi reach it?",
+      "gold_facts": ["fact.deploy_target", "fact.chat_surface"],
+      "category": "project-fact"
+    },
+    {
+      "id": "q03",
+      "text": "Which model am I chatting with, and who scores the accuracy numbers?",
+      "gold_facts": ["fact.model", "fact.judge"],
+      "category": "multi-session"
+    },
+    {
+      "id": "q04",
+      "text": "Write me a short helper for the extension.",
+      "gold_facts": ["pref.no_typescript", "pref.short_answers"],
+      "category": "preference",
+      "note": "Both preferences must surface unprompted on an unrelated request — CUJ §3 step 7."
+    },
+    {
+      "id": "q05",
+      "text": "Give me your take on the storage layer.",
+      "gold_facts": ["pref.short_answers", "fact.store"],
+      "category": "preference"
+    },
+    {
+      "id": "q06",
+      "text": "What language should I not use for this?",
+      "gold_facts": ["pref.no_typescript", "fact.project"],
+      "category": "preference"
+    },
+    {
+      "id": "q07",
+      "text": "Can the vendor SDK write records in a batch?",
+      "gold_facts": ["fact.sdk_batch_write_34", "fact.vendor_sdk"],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "knowledge-update",
+      "note": "The A-3 query. After session 2 the absence claim is refuted; any arm that returns it takes the 1/k precision hit."
+    },
+    {
+      "id": "q08",
+      "text": "I need to push a few thousand rows through the SDK — how should I do it?",
+      "gold_facts": ["fact.sdk_batch_write_34", "fact.vendor_sdk", "pref.short_answers"],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "knowledge-update"
+    },
+    {
+      "id": "q09",
+      "text": "Which SDK version did batch writes land in?",
+      "gold_facts": ["fact.sdk_batch_write_34"],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "temporal"
+    },
+    {
+      "id": "q10",
+      "text": "Did I ever tell you the SDK was missing something?",
+      "gold_facts": ["absence.sdk_batch_write", "prov.absence_source", "fact.sdk_batch_write_34"],
+      "category": "provenance",
+      "note": "Multi-gold and deliberately NOT refuted-filtered: asked about history, the refuted claim IS the answer, tagged as refuted. Distinguishes 'forgot' from 'knows it was withdrawn'."
+    },
+    {
+      "id": "q11",
+      "text": "How did I know the batch endpoint was missing — did I test it?",
+      "gold_facts": ["prov.absence_source", "absence.sdk_batch_write"],
+      "category": "provenance"
+    },
+    {
+      "id": "q12",
+      "text": "What do you actually remember about this project?",
+      "gold_facts": ["fact.project", "pref.no_typescript", "pref.short_answers", "fact.vendor_sdk"],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "multi-session",
+      "note": "CUJ §3 step 11 — the explain surface."
+    },
+    {
+      "id": "q13",
+      "text": "What is my deployment target for the memory service?",
+      "gold_facts": ["fact.deploy_target", "fact.no_network_chat_loop"],
+      "category": "project-fact"
+    },
+    {
+      "id": "q14",
+      "text": "Does the model decide when to look things up in memory?",
+      "gold_facts": ["rule.structural_firing", "fact.capture_first"],
+      "category": "procedure"
+    },
+    {
+      "id": "q15",
+      "text": "When I correct you, is the old belief deleted?",
+      "gold_facts": ["rule.never_hard_delete", "fact.sdk_batch_write_34"],
+      "category": "procedure"
+    },
+    {
+      "id": "q16",
+      "text": "Which component is allowed to write to the stores?",
+      "gold_facts": ["rule.only_p2_writes", "fact.store"],
+      "category": "procedure"
+    },
+    {
+      "id": "q17",
+      "text": "What happens to my turns before anything decides they matter?",
+      "gold_facts": ["fact.capture_first", "fact.consolidation_dag"],
+      "category": "procedure"
+    },
+    {
+      "id": "q18",
+      "text": "What happened overnight between my sessions?",
+      "gold_facts": ["fact.consolidation_dag", "fact.evolution_generations"],
+      "category": "multi-session"
+    },
+    {
+      "id": "q19",
+      "text": "How often does consolidation run if I never trigger a compaction?",
+      "gold_facts": ["fact.micro_sleep", "fact.consolidation_dag"],
+      "category": "temporal"
+    },
+    {
+      "id": "q20",
+      "text": "How much memory context gets pushed into each turn?",
+      "gold_facts": ["fact.recall_token_budget", "fact.model"],
+      "category": "project-fact"
+    },
+    {
+      "id": "q21",
+      "text": "Is your memory actually making you better at this project?",
+      "gold_facts": ["fact.scorecard_five", "fact.benchmark", "fact.judge"],
+      "category": "multi-session",
+      "note": "CUJ §3 step 12–13 — the report surface."
+    },
+    {
+      "id": "q22",
+      "text": "Which benchmark are we running, and how many categories does it cover?",
+      "gold_facts": ["fact.benchmark", "fact.judge"],
+      "category": "project-fact"
+    },
+    {
+      "id": "q23",
+      "text": "Does anything in the chat loop need an API key?",
+      "gold_facts": ["fact.no_network_chat_loop", "fact.judge"],
+      "category": "abstention",
+      "note": "Nothing in memory says the chat loop calls out. Correct behaviour is to answer 'no' from the stored constraint, not to invent a key path."
+    },
+    {
+      "id": "q24",
+      "text": "What is the vendor SDK's rate limit?",
+      "gold_facts": [],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "abstention",
+      "note": "Empty gold on purpose. Recall is undefined here (None, not 0.0); precision still penalises any arm that injects the refuted claim. Guards against a store that answers everything."
+    },
+    {
+      "id": "q25",
+      "text": "Which store keeps handing you the belief I already took back?",
+      "gold_facts": ["fact.vector_a3", "rule.never_hard_delete"],
+      "refuted_facts": ["absence.sdk_batch_write"],
+      "category": "knowledge-update",
+      "note": "The A-3 demo beat — CUJ §8 at 1:45."
+    }
+  ]
+}

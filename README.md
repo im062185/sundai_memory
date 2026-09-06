@@ -1,85 +1,227 @@
-# engram — a write-gated, bitemporal memory layer for agents
+# Engram
 
-SundAI hackathon project. A memory *writing* layer designed to sit on top of a flexible harness (Pi Agent, OpenClaw, or any loop that exposes hooks on turn-end and session-end).
+A self-managing memory organ for **pi**. It fires from pi's lifecycle hooks —
+`recall` before every turn, `remember` after every user turn — so the model
+never decides whether to remember. It cannot skip, defer, or disable it.
 
-## Where SOTA is lacking (research findings)
+Built in one hackathon day across four lanes. This README is written from the
+merge state on `lane/d`: what is actually in the tree, what was cut, and what is
+open. Numbers that were not measured are printed as `—`, never as `0`.
 
-| System | Strength | Documented gap |
-|---|---|---|
-| Mem0 | Extract→consolidate→retrieve pipeline, ~91% LoCoMo | Indexing reliability at scale; update/supersession underperforms; graph variant removed from OSS SDK |
-| Zep/Graphiti | Temporal knowledge graph, strong LongMemEval | ~600K tokens/conversation footprint (per Mem0's measurements); delayed post-ingestion retrieval |
-| Letta/MemGPT | LLM-managed memory tiers, transparent blocks | OS-paging overhead/latency; their own blog shows a plain filesystem agent beats specialized tools on LoCoMo |
-| Honcho | Reasoning-first ToM extraction, SOTA on LongMem-S/LoCoMo/BEAM at ~5% context | Users request: visible inference chains, user-defined forgetting, confidence surfacing |
-| All of the above | recall benchmarks | **Invalidation**: append-only stores hit ~55% stale-answer rates on update benchmarks; "most recent wins" heuristics fail; cross-session contradictions go unresolved in up to 42% of cases (BeliefShift) |
-
-**The gap is the write path, not retrieval.** Recent work (GovMem arXiv:2607.02579, TOKI arXiv:2606.06240, "Are We Ready For An Agent-Native Memory System?" arXiv:2606.24775, "Don't Ask the LLM to Track Freshness" arXiv:2606.01435) converges on the same conclusion: systems store happily but can't decide *when to write*, *when a repetition is evidence vs. an echo*, and *how to retract what was true last week*. That is exactly the "Processing" band on our whiteboard — so we scope there.
-
-## Architecture (maps to the whiteboard)
-
-```
-INPUT (sensory)          PROCESSING II (fast/online)      STORAGE
-conversation turns  ──►  declarative extraction      ──►  bitemporal SQLite
-prev. memory             SPRT write gate                  (valid_time × system_time)
-our prompts              salience weighting               + MD export for the agent
-
-                         PROCESSING I ("sleep", offline)
-                         candidate expiry · decay demotion · dedupe
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cd pi-extension && npm ci && cd ..   # required — without it a pi turn hangs silently
+.venv/bin/python -m pytest tests -q  # 104 passed, 1 xpassed
+rm -rf out                           # the sqlite store persists; reseeding it skews the run
+.venv/bin/python -m bench.component  # per-store retrieval, and the A-3 probe
+.venv/bin/python -m engram report    # the five-metric scorecard
 ```
 
-## Mechanisms, with their math (SOTA neuro → algorithm)
+All six lines were run against a **fresh clone of `build/engram-v2`**, not this
+working copy.
 
-1. **Write gate = optimal stopping.** "When has a candidate fact accrued enough evidence to persist?" is a sequential decision problem. We use Wald's **Sequential Probability Ratio Test**: each corroborating mention adds log-likelihood `ln(p₁/p₀)`; promote at `ln((1−β)/α)`, reject at `ln(β/(1−α))`. SPRT is provably the stopping rule minimizing expected sample count at fixed error rates — the "optimum stopping point" mechanism, and a principled answer to GovMem's "repetition is not evidence" problem (independent-channel salience weights, not raw counts).
-2. **Forgetting = ACT-R base-level activation.** `Bᵢ = ln(Σⱼ (t_now − tⱼ)^−d)`, d≈0.5 — the rational analysis of memory (Anderson & Schooler 1991): retrieval odds should track environmental odds of reuse. Frequently/recently used facts stay retrievable; one-off trivia (a past deadline) decays below threshold and is *demoted, never deleted*. Retrieval itself re-strengthens (testing effect).
-3. **Consolidation = Complementary Learning Systems.** Fast episodic candidate buffer (hippocampus-analogue) vs. slow, curated long-term store (neocortex-analogue), reconciled by an offline `sleep()` pass — mirroring the CLS framing now standard in the agent-memory literature (McClelland 1995; Kumaran, Hassabis & McClelland 2016; dual-layer agentic memory, arXiv:2608.22215). Whiteboard: "fire together wire together" = SPRT evidence accumulation; "sleep consolidation" = the offline pass.
-4. **Contradiction = bitemporal supersession, not overwrite.** Facts carry `valid_from/valid_to` (world time) and `sys_from` (write time); a correction closes the old interval and links `superseded_by`. Preserves as-of audit queries and resolves the ~42% unresolved-contradiction failure deterministically instead of asking the LLM to track freshness.
+The three-minute demo, beat by beat, is **[docs/DEMO.md](docs/DEMO.md)** — every
+command in it was run on this machine and every screen is copied from that run.
 
-## Pressure test (the "red-team subagent" run)
+---
 
-`python eval/pressure_test.py` — offline, deterministic; 5 synthetic sessions over 30 days including a preference update (vim→helix) and one-off trivia, probed with 5 questions. Three conditions share one answerer; only the memory layer varies.
+## What was built
 
-| condition | recall | stale answers |
-|---|---|---|
-| no memory | 0/5 | 0 |
-| append-only RAG (Mem0-style naive baseline) | 3/5 | **1** (answers "vim") |
-| **engram** | **4/5** | **0** |
+**The organ fires structurally.** A 141-line TypeScript pi extension
+(`pi-extension/src/index.ts`) spawns Engram as a Python stdio server and wires
+four hooks: `session_start → consolidate`, `before_agent_start → recall` (which
+injects a `Memory (provenance-tagged):` message), `agent_end → remember` for the
+user turn and the assistant turn, then `feedback` with the injected ids.
+Those four were verified live against pi 0.85.1 — `out/trace.jsonl` and
+`out/retrieval_log.jsonl` show each one firing, and a claim written in one
+session arriving in the next session's model context. A fifth hook,
+`session_before_compact`, returns the consolidation digest as the compaction
+summary instead of a model-written one; that code path was **not exercised** in
+my rehearsal — it needs a forced `/compact` in an interactive session.
 
-The engram miss is the expired one-off deadline — by design (decay). Verdict: **implementable for demo in ~250 LOC**; the with/without comparison works end-to-end. Swap `mock_answer` for a live model via `ANTHROPIC_API_KEY` for the demo.
+**Capture first.** Every turn is appended verbatim to the episodic log before
+anything judges it (`engram/p1/episodic.py`). The per-turn path only *tags
+salience* — explicit preferences, absence claims, refutations — with rules, not
+a model (`engram/p1/rules.py`). Nothing is thrown away because a per-turn
+extractor did not see the point of it yet.
 
-## LoCoMo benchmark (retrieval-level, offline)
+**Only the gate writes.** `engram/p2/gate.py` is the sole writer to any store;
+`tests/test_isolation.py` fails the build if anything else calls `write` or
+`refute`. Nothing is ever hard-deleted — refutation sets `status` and
+`valid_to`, so a corrected belief keeps its id and its history.
 
-`python eval/locomo_bench.py` — 10 LoCoMo conversations, 1,540 QA (categories 1–4; 5=adversarial excluded). Metric: **answer-in-context recall** (≥50% of gold-answer content tokens in the supplied context), isolating the memory layer from answerer quality. Parameters tuned on convs 0–4 only; convs 5–9 held out.
+**Consolidation is a DAG, with hindsight.** `expire → capture → encode → merge →
+adjudicate → promote → wire → reindex → census → evolve`, an explicit
+`networkx.DiGraph` whose acyclicity is asserted at import
+(`engram/consolidate/`). LLM encoding lives here, not in the turn loop, so it
+judges a turn knowing what came after it.
 
-| condition | tune 0–4 | **held-out 5–9** | tokens/q |
-|---|---|---|---|
-| full history (ceiling) | 0.938 | 0.938 | ~18,000 |
-| keyword RAG k=10 | 0.593 | 0.595 | ~400 |
-| engram facts-only (regex) | 0.000 | 0.000 | 0 |
-| **engram (episodic)** | 0.818 | **0.767** | ~890 |
+**Two retrieval stores behind one frozen interface.** `sqlite` (FTS5, with a
+link boost weighted 0.2) and a naive numpy `vector` arm, both implementing
+`engram/adapters/base.py`. Two more adapters ship alongside them and are not
+retrieval stores: `markdown` (export) and `null`. The demo says *two stores*,
+and it means the two that answer queries.
 
-Held-out per-category: multihop 0.56, temporal 0.76, open 0.28, singlehop 0.89 — 82% of the full-history ceiling at **20× fewer tokens**, +17 pts over the keyword baseline (+9 over a budget-matched k=20 baseline).
+**Measurement that refuses to flatter itself.** Five metrics in a fixed order —
+speed · accuracy · tokens · precision · recall — memory-on then memory-off, then
+a per-store table, then three labelled tiers (Outcome / Component / Provenance).
+Component numbers are labelled *"the pipe works"* and are never presented as
+benefit. Every accuracy number carries the judge's name or the words
+`judge: not run`. Token counts carry `(est)` because the server's `tokens` field
+is `len(text)//4`, not a tokenizer count.
 
-## Fix log (what pressure-testing found, in order)
+---
 
-1. **Regex fact extraction: 0.000 on real dialogue.** Fixed: LLM extractor (`engram/extractor.py`) emitting (subject, predicate, object, confidence, valid_time); confidence becomes SPRT evidence `ln(c/(1−c))`, replacing hand-set salience boosts. Regex fallback when no API key; live benchmarking of this path still requires a key.
-2. **Testing-effect strengthening caused cross-query interference** — first episodic run lost to keyword RAG. Fixed: strengthening is thread-scoped (`thread=` param); independent probes never pollute rankings.
-3. **Winning retrieval mechanisms are memory-theory imports:** surprisal weighting (`1/ln(1+df)`, distinctiveness) + temporal contiguity (Howard & Kahana's TCM: seed hits reinstate ±2 adjacent turns).
-4. **Activation term measurably hurts archival probes** (−0.6 pts on tune split). Fixed: `w_act=0` default for probe retrieval; activation retained for thread continuity and fact-layer forgetting.
-5. **LSA semantic blending: ~0 held-out gain** (0.767 vs 0.771) — per-conversation LSA lacks signal; pretrained encoders can't download in the sandbox. Shipped as pluggable interface (`engram/semantic.py`), defaulted off. Open-domain (0.28 vs 0.66 ceiling) is the remaining lexical-matching gap; a sentence encoder is the drop-in fix.
-6. **Gate recalibration regression, caught by the staleness test** (4/5 → 1/5): graduated facts discarded rehearsal history; re-mentions of held facts restarted candidacy instead of reinforcing. Fixed: candidate mention timestamps carry over as access history on promotion; re-mentions `_touch` the existing trace. Restored 4/5, 0 stale — and the one-off deadline is now filtered by the gate (never promoted) rather than by decay, the cleaner mechanism.
+## The A-3 outcome: the vector arm still returns refuted claims
 
-## Remaining known gaps
+**It reproduces.** `engram/adapters/vector.py:93` writes back the status it
+found instead of `"refuted"`:
 
-- Live end-to-end eval (real answerer + LLM extractor) — needs `ANTHROPIC_API_KEY`; everything here is retrieval-level upper bound.
-- Pretrained embeddings for open-domain/inference questions (interface ready).
-- Multi-hop assembly (0.56): contiguity finds neighbors in time, not content; entity-linked spreading activation needs the LLM extractor's entities.
-- Harness hooks (`on_turn`/`on_session_end`/`pre_prompt`) for Pi Agent/OpenClaw; persona-context salience prior from the whiteboard.
+```python
+def refute(self, claim_id: str, *, by: str | None = None) -> None:
+    # Deliberately naive (A-3): keep refuted claims for the fallback vector path.
+    if claim_id in self._claims:
+        self._claims[claim_id]["status"] = self._claims[claim_id].get("status", "promoted")
+```
+
+So a claim that was promoted stays promoted. Refute it through the product's own
+`refute` op and ask again:
+
+```
+A-3 sqlite: refuted a promoted claim → returned again: False, stats.refuted=2
+A-3 vector: refuted a promoted claim → returned again: True,  stats.refuted=0
+```
+
+The vector arm hands the dead claim back **on the very next query**, and its
+`stats()` reports **zero** refutations — the store cannot even tell you the
+refutation happened. `tests/test_stores.py::test_vector_refute_keeps_returning`
+is marked `xfail` and **xpasses**: the bug is present, recorded, and *not fixed*,
+per TDD §9 — never fix the vector arm before the component snapshot records it.
+
+Two things this exercise taught that were not in the plan:
+
+1. **A-3 does not show up in the query table** on the CUJ corpus. The absence
+   claim there is only ever *held*, so no store ever returns it, before or after
+   the correction. Low precision in the table is ordinary retrieval noise, not
+   A-3. The report now names A-3 **only** from the explicit probe
+   (`bench/component.py:a3_probe`) and never infers it from a precision number.
+2. **The 1/k rule needs a refuted id to bite.** A returned refuted id lowers
+   precision by exactly 1/k and is a false positive even when it appears in gold
+   (`bench/metrics.py`, asserted in `tests/test_metrics.py`). On this corpus that
+   penalty never fires, which is exactly why the probe exists.
+
+---
+
+## The judge: **not run**
+
+`bench/judge.py` scores LongMemEval answers with **`claude-sonnet-5`**, and only
+when `ANTHROPIC_API_KEY` is present. It is not set on this machine, so:
+
+```
+LongMemEval slice — accuracy — · n=0 · judge: not run
+  (no per-category result — slice not run)
+```
+
+`n=0` because the slice was never *run* here, not because the slice is empty:
+it holds 22 questions and is checked into the tree. Accuracy is null by design,
+never zero.
+
+The judge also refuses to score any record whose answerer was a stub, whose run
+errored, or whose answer is empty — so a run that never called a model can never
+turn into an accuracy number. If every record is refused, the judge's own name
+is replaced by `not run`, whatever client was configured.
+
+The slice itself is real and was built by reading the release, not by assuming
+its layout: **22 questions** from `longmemeval_oracle` on
+`xiaowu0162/longmemeval-cleaned`, all six `question_type` values represented,
+4 abstention (`_abs`) questions included, selected by a deterministic rule
+recorded in the file. The layout evidence — variant names, file sizes, field
+lists, and the places where the README and the actual file disagree — is in
+[bench/LONGMEMEVAL.md](bench/LONGMEMEVAL.md).
+
+---
+
+## What was cut
+
+| Cut | Why |
+|---|---|
+| **pass^k on the project scenarios** (CUJ S9) | Step 13 was cut before the build started (AMD-03 §6). The report prints `pass^k: not run` with that reason attached rather than omitting the line. |
+| **A ≥50-question LongMemEval run** (CUJ S12 asks ≥50) | The slice is 22, sized so all six categories are covered and a full arm fits in the day. The run itself needs a chat model and a judge key; neither exists here. `n` is printed next to every accuracy number so the slice size is never hidden. |
+| **STATE-Bench** | O-6a adapter only, no run today (CUJ C-9). |
+| **A real LM Studio probe for A-2** | LM Studio is not installed on this machine. Split instead: *what pi does with each reasoning shape* is fixed by the pi build and was probed offline with a scripted server — pi turns `reasoning_content` into a real thinking block, and does **not** parse inline `<think>` tags, so `p1/think.py` must strip them itself. *What the server emits* is a demo-machine question and is flagged as such in `pi-extension/HOOKS.md`. |
+| **Fixing A-3** | Deliberate. TDD §9. |
+
+---
+
+## What is open
+
+**Retrieval quality is measured on 4 of 25 queries.** `bench/queries.json` has
+25; lane B's two fixture sessions only ever state 6 of the 25 fact keys, so 21
+queries have no resolvable gold. They are **skipped, not scored 0.00** — scoring
+them would measure the corpus, not the retriever — and the skipped count is
+printed and written into `out/results.json`. Closing this needs a corpus that
+states the other facts, or a query set cut down to the corpus.
+
+**Three defects found while rehearsing the demo**, written down rather than
+patched — two live in other lanes' code and the first is pi's own behaviour
+(details in [docs/DEMO.md](docs/DEMO.md)):
+
+1. **An untrusted project silently has no memory.** pi loads `.pi/extensions/*.ts`
+   only after the project is trusted, and `-p` / `--mode json` never prompt. Pass
+   `-a`, or the demo runs with an empty memory and no error.
+2. **Held claims are unreachable**, so on the correction turn `recall` injects
+   nothing — the model is corrected without seeing what it is correcting.
+3. **`export_markdown()` renders nothing**: no claim on the CUJ journey is
+   assigned tier `always`, so `engram explain`'s "About you" and "Standing notes"
+   are empty even with six promoted claims.
+
+A fourth, the extension killing pi at exit, was **fixed by lane A** in
+`unref()`-ing the server child (`pi-extension/src/index.ts:26`) and is no longer
+open: re-rehearsed on the merged tree, both headless sessions exit 0 with an
+empty stderr, and session 2 still receives the claim written in session 1.
+
+**The component bench is not idempotent.** Rerun it without `rm -rf out` and
+the sqlite row changes — the store persists, the gate dedups the reseed, so the
+gold patterns resolve against one claim instead of twelve and precision drops
+to 0.00 while the in-memory vector row stays put. The bench now prints a warning
+when `out/component` already exists rather than reporting the second number as
+if it were the first, but the real fix is a bench that seeds into a fresh
+directory per run.
+
+**The turn-level tagger merges facts.** "Keep answers short when summarizing and
+coaching. The vendor SDK has no batch-write endpoint." becomes **one** claim of
+`kind: absence`. When session 2 refutes the absence, the preference goes down
+with it, and no promoted claim carries "keep answers short" any more. Capture
+first is doing its job — the verbatim turn is in `out/episodes.jsonl` — but the
+tagging granularity is a real gap, and hindsight encoding in consolidation is
+where it should be closed.
+
+**`ENGRAM_ASSIST` is named by TDD §6.8 and read by nothing.** The bench driver
+sets it to disable the encoder during ingest; `engram/server.py` does not look at
+it. The discrepancy is recorded in `bench/longmemeval.py` rather than resolved in
+one direction silently.
+
+**`corrections per session, per generation`** prints `not measured` until
+`out/generations/gen-*/fitness.json` exists.
+
+---
 
 ## Layout
 
 ```
-engram/core.py          # store + SPRT gate + decay + contiguity recall + sleep
-engram/extractor.py     # LLM fact extraction (regex fallback offline)
-engram/semantic.py      # pluggable semantic scorer (LSA reference impl)
-eval/pressure_test.py   # staleness/contradiction eval (offline)
-eval/locomo_bench.py    # LoCoMo tune/test benchmark (offline)
+engram/            the organ: server, p1 capture, p2 gate, p3 router,
+                   encode, consolidate DAG, adapters, report
+pi-extension/      the pi extension (TypeScript) + HOOKS.md probe evidence
+bench/             metrics, query set, component bench, LongMemEval driver,
+                   the judge, and the demo rehearsal harness
+docs/              CUJ, TDD, AMD-03, LANES, PROTOCOL, DEMO
+schema/            claim.schema.json (frozen)
 ```
+
+Frozen contracts — changed only by agreement of all four lanes:
+`schema/claim.schema.json`, `engram/adapters/base.py`, `docs/PROTOCOL.md`,
+`pi-extension/HOOKS.md`.
+
+No network in the tests or the chat loop. `bench/judge.py` is the only file that
+reads `ANTHROPIC_API_KEY`, and nothing in this repo writes to `~/.pi/agent` —
+configs ship as `config/*.example` with the copy command printed.

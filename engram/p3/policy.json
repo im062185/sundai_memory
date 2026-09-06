@@ -1,0 +1,15 @@
+{
+  "kind_to_tier": {
+    "profile": "always",
+    "preference": "always",
+    "feedback": "always",
+    "procedure": "procedural",
+    "verbatim": "procedural",
+    "fact": "semantic",
+    "absence": "semantic",
+    "decision": "semantic",
+    "episode": "episodic",
+    "capability": "semantic",
+    "constraint": "always"
+  }
+}
