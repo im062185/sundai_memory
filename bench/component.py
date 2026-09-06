@@ -252,6 +252,17 @@ def run(queries_path: Path, stores: Sequence[str], patterns, out_root: Path,
     detail: dict[str, Any] = {}
     n_scored = 0
 
+    # The sqlite store persists under out/. Seeding it twice is not a no-op:
+    # the gate dedups, so the second run observes almost no writes, the gold
+    # patterns resolve against almost nothing, and the row silently reports a
+    # different number. The vector arm is in memory and is unaffected — which
+    # makes the discrepancy between the two rows even harder to read. Say it.
+    if out_root.exists():
+        print(f"  warning: {out_root} already exists — a persistent store (sqlite) is "
+              f"being reseeded, and the gate will dedup most of the seed. These numbers "
+              f"are not comparable to a clean run; `rm -rf {out_root}` first.",
+              file=sys.stderr)
+
     for name in stores:
         result = run_store(name, queries_path, patterns, out_root, k, limit)
         recalls = result["recalls"]
