@@ -56,6 +56,7 @@ function memoryMessage(claims: Array<{ text: string; source_class?: string }>, a
   const parts = ["Memory (provenance-tagged):"];
   for (const k of ["USER.md", "MEMORY.md"]) if (always[k]) parts.push(always[k].trim());
   if (claims.length) parts.push("## RECALLED\n" + claims.map((c) => `- [${tag(c.source_class)}] ${c.text}`).join("\n"));
+  parts.push("If the answer is not in the memory above, say that you do not have that information rather than guessing.");
   return parts.join("\n");
 }
 

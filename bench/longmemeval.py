@@ -68,6 +68,7 @@ ABS_PER_TYPE = 1
 # Byte-for-byte the string pi-extension/src/index.ts builds (memoryMessage).
 MEMORY_HEADER = "Memory (provenance-tagged):"
 SOURCE_CLASSES = ("said", "verified", "inferred")
+ABSTAIN_HINT = "If the answer is not in the memory above, say that you do not have that information rather than guessing."
 
 
 # --------------------------------------------------------------------------
@@ -163,7 +164,7 @@ def memory_message(claims: Sequence[dict]) -> str:
         return source_class if source_class in SOURCE_CLASSES else "said"
 
     lines = [f"- [{tag(c.get('source_class'))}] {c.get('text', '')}" for c in claims]
-    return MEMORY_HEADER + "\n" + "\n".join(lines)
+    return MEMORY_HEADER + "\n" + "\n".join(lines) + "\n" + ABSTAIN_HINT
 
 
 # --------------------------------------------------------------------------
@@ -381,6 +382,7 @@ class Record:
     token_source: str = TOKENS_SERVER
     recall_ms: float | None = None
     remember_ms_mean: float | None = None
+    encoder: dict | None = None
     answer_ms: float | None = None
     model_tokens: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
@@ -414,6 +416,10 @@ def run_question(
         engram = fresh_engram(out_dir)
         remember_ms = ingest(engram, instance)
         record.remember_ms_mean = sum(remember_ms) / len(remember_ms) if remember_ms else None
+        if os.environ.get("ENGRAM_BENCH_ENCODER") == "1":
+            # hindsight pass: consolidate the ingested episodes (encoder + gate) before recall
+            cons = engram.handle({"op": "consolidate", "messages": [], "reason": "cli"})
+            record.encoder = cons.get("counts") if cons.get("ok") else {"error": cons.get("error")}
 
         res = engram.handle({"op": "recall", "text": question, "k": k, "session": record.question_id})
         if not res.get("ok"):

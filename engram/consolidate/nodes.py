@@ -64,7 +64,21 @@ def encode(state):
         p = state["out"].parent / "persona.md"
         if p.exists():
             persona = p.read_text()
-        state["candidates"] = list(fn(state["episodes"], persona, []) or [])
+        related, seen = [], set()
+        try:
+            from engram.server import _fts_query
+            for ep in state["episodes"]:
+                if ep["role"] != "user":
+                    continue
+                q = _fts_query(ep["text"])
+                for h in (state["store"].query(q, k=3) if q else []):
+                    if h.claim["id"] not in seen:
+                        seen.add(h.claim["id"]); related.append(h.claim)
+                if len(related) >= 12:
+                    break
+        except Exception:
+            related = []
+        state["candidates"] = list(fn(state["episodes"], persona, related) or [])
     if True:  # salience rules always run too (fast-track kinds); merge() dedupes against the encoder
         extract = _opt("engram.p1.rules", "extract_claims")
         route = _opt("engram.p3.router", "route_claim")
@@ -82,10 +96,25 @@ def encode(state):
 def merge(state):
     """Dedupe near-identical candidates (exact text today; lane C may refine)."""
     seen, kept = set(), []
+    norm = lambda t: " ".join((t or "").lower().split()).rstrip(".")
+    try:
+        from engram.server import _fts_query
+    except Exception:
+        _fts_query = None
     for c in state["candidates"]:
-        key = (c.get("subject"), c.get("text", "").strip().lower())
-        if key not in seen:
-            seen.add(key)
+        key = norm(c.get("text", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        # already in the store verbatim (e.g. the salience rules stored it at remember time)?
+        dup = False
+        if _fts_query and key:
+            try:
+                q = _fts_query(c.get("text", ""))
+                dup = any(norm(h.claim.get("text", "")) == key for h in (state["store"].query(q, k=5) if q else []))
+            except Exception:
+                dup = False
+        if not dup:
             kept.append(c)
     state["counts"]["merged"] = len(state["candidates"]) - len(kept)
     state["candidates"] = kept

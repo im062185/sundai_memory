@@ -42,8 +42,13 @@ def promote(claim: dict[str, Any], store) -> tuple[str, list[str], str | None]:
     if not subject:
         return "rejected", ["G1"], None
 
+    # Supersession (AMD-03 §1): a newer value that names the claim it replaces refutes it.
+    superseded = claim.get("supersedes")
+    if isinstance(superseded, str) and superseded.startswith("clm_"):
+        store.refute(superseded, by=claim.get("id"))  # no-op if the id is unknown
+        fired.append("SUPERSEDE")
     # G8: duplicate same-subject same-polarity is rejected for non-absence claims.
-    if kind != "absence":
+    if kind != "absence" and not superseded:
         for prior in store.by_subject(subject):
             if prior.get("status") == "refuted":
                 continue

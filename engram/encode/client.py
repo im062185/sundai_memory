@@ -79,7 +79,28 @@ class FakeClient:
         return ""
 
 
+class OpenAIClient:
+    """Live call through the OpenAI API. Used when no Anthropic key is set (team decision 2026-09-06)."""
+    name = "openai"
+    DEFAULT = "gpt-4.1-mini"
+
+    def __init__(self, model: str | None = None) -> None:
+        m = model or os.environ.get("ENGRAM_ENCODER_MODEL", self.DEFAULT)
+        self.model = m.split("/", 1)[1] if m.startswith("openai/") else (self.DEFAULT if m.startswith("claude") else m)
+
+    def complete(self, prompt: str, *, session: str | None = None) -> str:
+        import openai
+        client = openai.OpenAI()  # reads OPENAI_API_KEY
+        reply = client.chat.completions.create(model=self.model, max_tokens=2048,
+                                               messages=[{"role": "user", "content": prompt}])
+        return (reply.choices[0].message.content or "").strip()
+
+
 def get_client() -> EncoderClient:
     if os.environ.get("ENGRAM_ENCODER_FAKE") == "1":
         return FakeClient()
+    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        return AnthropicClient()
+    if os.environ.get("OPENAI_API_KEY", "").strip():
+        return OpenAIClient()
     return AnthropicClient()
