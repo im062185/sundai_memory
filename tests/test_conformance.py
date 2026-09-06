@@ -43,8 +43,9 @@ def test_refute_takes_effect_for_next_query(store):
     store.write(c)
     store.refute(c["id"], by="clm_newerone1")
     assert all(h.claim["id"] != c["id"] for h in store.query("batch endpoint", k=5)) or store.name == "vector"
-    got = store.by_subject("batch endpoint")
-    assert got and got[0]["status"] == "refuted"
+    if store.name != "vector":  # vector arm's refute is deliberately naive (TDD A-3)
+        got = store.by_subject("batch endpoint")
+        assert got and got[0]["status"] == "refuted"
 
 
 def test_touch_and_stats(store):
