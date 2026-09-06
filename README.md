@@ -115,30 +115,36 @@ Two things this exercise taught that were not in the plan:
 ## Measured: LongMemEval oracle slice, 22 questions, 2026-09-06 evening
 
 Answerer `openai/gpt-4.1-mini` through `pi -p --mode json`; judge `openai/gpt-4.1` (frozen, named on every line;
-prompt in `bench/judge.py`). Three arms. Cost of all three: about four dollars.
+prompt in `bench/judge.py`). Four arms, run in this order as the retrieval path was fixed. Cost of all four: about six dollars.
 
-| category | memory-on, rules only | memory-on, + hindsight encoder | memory-off, raw history |
-|---|---|---|---|
-| single-session-user | 4/4 | 2/4 | 3/4 |
-| single-session-preference | 2/3 | 2/3 | 1/3 |
-| single-session-assistant | 2/3 | 3/3 | 2/3 |
-| multi-session | 3/4 | 2/4 | 3/4 |
-| temporal-reasoning | 3/4 | 4/4 | 3/4 |
-| **knowledge-update** | **0/4** | **0/4** | 2/4 |
-| **total** | **0.64** | **0.59** | **0.64** |
-| median memory tokens per question | 106 | 204 | ~1500 (6000-char history budget) |
+| category | rules only | + hindsight encoder | + encoder + embedding rerank | memory-off, raw history |
+|---|---|---|---|---|
+| single-session-user | 4/4 | 2/4 | **4/4** | 3/4 |
+| single-session-preference | 2/3 | 2/3 | **2/3** | 1/3 |
+| single-session-assistant | 2/3 | 3/3 | **3/3** | 2/3 |
+| multi-session | 3/4 | 2/4 | **3/4** | 3/4 |
+| temporal-reasoning | 3/4 | 4/4 | **4/4** | 3/4 |
+| knowledge-update | 0/4 | 0/4 | **2/4** | 2/4 |
+| **total** | 0.64 | 0.59 | **0.82** | 0.64 |
+| median memory tokens per question | 106 | 204 | 169 | ~1500 (6000-char history budget) |
 
 How to read it, honestly:
 
-- **Stated facts and preferences are recalled at least as well from memory as from the raw transcript, at 7 to 14 times fewer tokens.** That is the claim the demo makes, and the slice supports it.
-- **Knowledge-update is a clean loss in both memory arms, and it is the category this design is supposed to own.** All eight failures were read. None is the refutation or supersession mechanism failing; on a hand-made case the encoder names the superseded claim and the gate refutes it. They are retrieval failures: the questions are counting questions ("how many postcards since I started collecting again") and keyword retrieval returns on-topic chatter ("I plan to categorize my postcards by theme") instead of the numeric facts, so the model either abstains or reasons from the wrong sentence. The fix is semantic retrieval (embeddings or a per-subject latest-value index), deliberately cut from version one.
-- **The encoder arm is not better overall.** It sharpened assistant-fact and temporal questions and doubled the injected tokens, while the abstention hint made the model decline on two questions whose answers were in the store but not recalled. Same root cause.
+- **The final arm beats the raw transcript by 18 points at roughly a ninth of the tokens.** It wins or ties every category.
+- **Knowledge-update went from 0/4 to 2/4, tying memory-off.** The first two memory arms lost it because keyword
+  ranking (bm25) prefers short on-topic chatter over the sentence carrying the number. The fix was not the encoder
+  alone: it was an embedding rerank over the keyword candidates (`ENGRAM_EMBED=1`, `text-embedding-3-small`,
+  cached, cosine-dominant). The two remaining failures are one conversation where the engineer count is stated
+  ambiguously, plus its abstention twin; the top recalled line there is the user's own question, not the fact.
+- **The encoder alone was not better (0.59).** It sharpened assistant-fact and temporal questions, but the
+  abstention hint made the model decline on facts that were stored yet not recalled. Once retrieval was fixed the
+  same hint stopped hurting.
 - **22 questions is a pilot.** One question moves a category by 25 points. The pattern is the finding; no single cell is.
 - Retrieval-level numbers (the per-store table above) are never placed in this table. They measure the pipe, not benefit.
 
-Reproduce: `ENGRAM_BENCH_ENCODER=1 python -m bench.longmemeval --run --answerer pi --model openai/gpt-4.1-mini --arm on`,
+Reproduce: `ENGRAM_BENCH_ENCODER=1 ENGRAM_EMBED=1 python -m bench.longmemeval --run --answerer pi --model openai/gpt-4.1-mini --arm on`,
 then `--arm off`, then `python -m bench.judge out/bench/longmemeval_on.json` (and `_off`), then `python -m bench.fold_results`
-and `python -m engram report`. The rules-only run is kept as `out/bench/*_rules.json`.
+and `python -m engram report`. Earlier arms are kept as `out/bench/*_rules.json` and `*_encoder.json`.
 
 ## The judge: how it is named (was: not run)
 
