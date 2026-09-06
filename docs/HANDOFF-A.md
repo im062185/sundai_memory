@@ -9,8 +9,8 @@ Lane A = integrator + pi extension + stdio server + consolidation DAG. This file
 | 00 | probes, contracts, LANES/PROMPTS | done, pushed (ffd136d, 728526c) | fresh clone test |
 | 03 | tests/test_conformance.py, tests/test_isolation.py | done | pytest 8 passed on NullStore |
 | 04 | .github/workflows/ci.yml | done, first run pending | local pytest; CI result unverified |
-| 08 | engram/server.py, engram/__main__.py, pi-extension/src/index.ts | pending | |
-| 09 | engram/consolidate/dag.py, tests/test_dag.py, compaction path | pending | |
+| 08 | engram/server.py, engram/__main__.py, pi-extension/src/index.ts | code done; LIVE PI CHECK PENDING (needs a model: ANTHROPIC_API_KEY or `pi` → /login) | pytest test_server (stdio roundtrip), node --test mocked-pi hooks, tsc clean |
+| 09 | engram/consolidate/dag.py + nodes.py, tests/test_dag.py; compaction path in index.ts | done except live forced /compact (A-6) | pytest test_dag; node hook test covers the compaction handler with a mocked pi |
 | merges | lane/b, lane/c, lane/d into build/engram-v2 | none yet | |
 | 14 | README pointers, final PR | pending | |
 

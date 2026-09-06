@@ -3,7 +3,7 @@ import ast, pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "engram"
 ALLOWED_IMPORT = {"p2", "p3", "adapters", "server.py", "__main__.py", "consolidate", "report", "evolve"}
-ALLOWED_WRITE = {"p2", "consolidate"}   # consolidate.promote node is the DAG's single writer
+ALLOWED_WRITE = {"p2", "consolidate", "server.py"}   # consolidate.promote is the DAG's writer; server.py only for the explicit `refute` op (user command)
 
 
 def _pkg(path):
