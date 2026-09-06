@@ -215,14 +215,14 @@ class PiAnswerer:
 
     def __call__(self, prompt: str, *, memory: str | None) -> Answer:
         full = f"{memory}\n\n{prompt}" if memory else prompt
-        cmd = [self.binary, "-p", "--mode", "json"]
+        cmd = [self.binary, "-p", "--mode", "json", "--no-context-files"]
         if self.model:
             cmd += ["--model", self.model]
         cmd.append(full)
 
         t0 = time.perf_counter()
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, stdin=subprocess.DEVNULL)
         except FileNotFoundError:
             return Answer("", len(full), 0.0, answerer=self.name, error=f"{self.binary} not on PATH")
         except subprocess.TimeoutExpired:

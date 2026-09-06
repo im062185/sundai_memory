@@ -385,6 +385,13 @@ def read_corrections(generations_dir: str | Path = "out/generations") -> Correct
             continue
         entry: dict[str, Any] = {"generation": gen_dir.name}
         found = False
+        # lane C's actual layout (2026-09-06): top-level "corrections" and fitness.corrections,
+        # measured on the memory-on replay only; memory-off is not produced by evolve.
+        fit = data.get("fitness") if isinstance(data.get("fitness"), dict) else {}
+        for cand in (data.get("corrections"), fit.get("corrections")):
+            if isinstance(cand, (int, float)) and "memory_on" not in entry:
+                entry["memory_on"] = float(cand)
+                found = True
         for key, out_key in (
             ("corrections_per_session", "memory_on"),
             ("corrections_per_session_memory_on", "memory_on"),

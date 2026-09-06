@@ -5,7 +5,11 @@ judge's name, or the word "not run".** There is no third state and no
 silent zero.
 
   ANTHROPIC_API_KEY set   -> grade with claude-sonnet-5, judge = "claude-sonnet-5"
-  ANTHROPIC_API_KEY unset -> accuracy null, judge = "not run"
+  else OPENAI_API_KEY set -> grade with gpt-4.1,         judge = "openai/gpt-4.1"
+  neither                 -> accuracy null, judge = "not run"
+  (Judge switched to allow OpenAI on 2026-09-06 by lane A with the team's ok: one key for
+  answerer and judge. The judge is a different, larger model than the answerer, and it is
+  named on every accuracy line, which is the rule this file exists to enforce.)
 
 This is the only file in the repo that touches the network (CLAUDE.md).
 Nothing here runs from the chat loop or from the test suite; the tests
@@ -38,7 +42,9 @@ if str(REPO) not in sys.path:
 
 from bench.metrics import JUDGE_NOT_RUN, Judgement, accuracy  # noqa: E402
 
-JUDGE_MODEL = "claude-sonnet-5"
+OPENAI_JUDGE_MODEL = "openai/gpt-4.1"
+JUDGE_MODEL = "claude-sonnet-5" if os.environ.get("ANTHROPIC_API_KEY", "").strip() else (
+    OPENAI_JUDGE_MODEL if os.environ.get("OPENAI_API_KEY", "").strip() else "claude-sonnet-5")
 MAX_TOKENS = 1024
 STUB_ANSWERER = "stub"
 
@@ -79,7 +85,7 @@ def have_key() -> bool:
     is explicit — gate on the variable — so that is what this does, and it
     reports "not run" rather than trying and half-succeeding.
     """
-    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip() or os.environ.get("OPENAI_API_KEY", "").strip())
 
 
 def gold_text(gold: Any) -> str:
@@ -127,10 +133,30 @@ def user_prompt(record: dict) -> str:
 # --------------------------------------------------------------------------
 
 def make_client():
-    """Construct an Anthropic client. Raises if the SDK or key is missing."""
-    import anthropic  # imported here so the module loads without the SDK
+    """Anthropic client when ANTHROPIC_API_KEY is set, else an OpenAI client. Raises if neither."""
+    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        import anthropic  # imported here so the module loads without the SDK
+        return anthropic.Anthropic()
+    import openai
+    return openai.OpenAI()
 
-    return anthropic.Anthropic()
+
+def _is_openai(client: Any) -> bool:
+    return type(client).__module__.startswith("openai")
+
+
+def _judge_openai(client: Any, record: dict, model: str) -> tuple[bool | None, str]:
+    mid = model.split("/", 1)[1] if model.startswith("openai/") else model
+    try:
+        r = client.chat.completions.create(
+            model=mid, max_tokens=MAX_TOKENS,
+            messages=[{"role": "system", "content": SYSTEM + "\nReply with JSON: {\"correct\": true|false, \"reason\": \"...\"}"},
+                      {"role": "user", "content": user_prompt(record)}],
+            response_format={"type": "json_object"},
+        )
+        return _parse_verdict((r.choices[0].message.content or "").strip())
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
 
 
 def _text_of(response: Any) -> str:
@@ -160,6 +186,8 @@ def _parse_verdict(text: str) -> tuple[bool | None, str]:
 
 def judge_one(client: Any, record: dict, model: str = JUDGE_MODEL) -> tuple[bool | None, str]:
     """Grade one record. Returns (correct, reason); correct is None on failure."""
+    if _is_openai(client):
+        return _judge_openai(client, record, model)
     request: dict[str, Any] = {
         "model": model,
         "max_tokens": MAX_TOKENS,
@@ -284,7 +312,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     shown = "—" if value is None else f"{value:.2f}"
     print(f"{path}: accuracy {shown} (judge: {payload['judge']}, n={payload['n']})")
     if payload["judge"] == JUDGE_NOT_RUN:
-        print("ANTHROPIC_API_KEY not set, or every record was unscorable — "
+        print("no judge key set (ANTHROPIC_API_KEY or OPENAI_API_KEY), or every record was unscorable — "
               "accuracy is null by design, not zero.")
     return 0
 
