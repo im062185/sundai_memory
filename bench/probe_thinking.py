@@ -24,7 +24,7 @@ import argparse
 import json
 import sys
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL_ID = "probe-model"
 
@@ -50,8 +50,39 @@ SCRIPTS: list[list[dict]] = [
 ]
 
 
+MEMORY_HEADER = "Memory (provenance-tagged):"
+
+
+def echo_reply(messages: list[dict]) -> str:
+    """What the demo rehearsal needs a model for: proof the memory arrived.
+
+    `--echo` answers every turn with what Engram actually put in the model's
+    context this turn. It is not an answer to the question and is never scored
+    (bench/judge.py refuses records whose answerer is not a model). It exists
+    so the extension → server → recall → injection path can be rehearsed on a
+    machine with no LM Studio and no API key, which is what S11 asks about:
+    did the hook fire, and did the claims reach the context.
+    """
+    def flatten(content) -> str:
+        # OpenAI content is a string OR a list of parts. str() on the list
+        # escapes the newlines and the claim lines vanish — flatten properly.
+        if isinstance(content, list):
+            return "\n".join(str(p.get("text", "")) if isinstance(p, dict) else str(p)
+                             for p in content)
+        return str(content or "")
+
+    injected = [m for m in messages if MEMORY_HEADER in flatten(m.get("content"))]
+    if not injected:
+        return "memory: none injected this turn"
+    body = flatten(injected[-1].get("content"))
+    claims = [ln.strip() for ln in body.splitlines() if ln.strip().startswith("-")]
+    first = claims[0][:90] if claims else "(header only, no claims)"
+    return f"memory: {len(claims)} claim(s) injected · first → {first}"
+
+
 class Handler(BaseHTTPRequestHandler):
     turn = 0
+    echo = False
 
     def log_message(self, fmt, *a):  # keep the probe output readable
         sys.stderr.write("  [server] " + (fmt % a) + "\n")
@@ -89,7 +120,10 @@ class Handler(BaseHTTPRequestHandler):
             "keys": sorted(req),
         }) + "\n")
 
-        script = SCRIPTS[Handler.turn % len(SCRIPTS)]
+        if Handler.echo:
+            script = [{"content": echo_reply(req.get("messages", []))}]
+        else:
+            script = SCRIPTS[Handler.turn % len(SCRIPTS)]
         Handler.turn += 1
         if req.get("stream"):
             self._stream(script)
@@ -135,12 +169,19 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--serve", action="store_true")
     ap.add_argument("--port", type=int, default=1234)
+    ap.add_argument("--echo", action="store_true",
+                    help="reply with the memory Engram injected, for demo rehearsal")
     args = ap.parse_args(argv)
     if not args.serve:
         ap.print_help()
         return 0
-    server = HTTPServer(("127.0.0.1", args.port), Handler)
-    sys.stderr.write(f"probe server on http://127.0.0.1:{args.port}/v1 (model {MODEL_ID})\n")
+    Handler.echo = args.echo
+    # Threading: pi opens more than one connection (a /models probe
+    # alongside the streaming POST). A single-threaded server deadlocks.
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    mode = "echo (rehearsal)" if args.echo else "scripted (A-2 probe)"
+    sys.stderr.write(f"probe server on http://127.0.0.1:{args.port}/v1 "
+                     f"(model {MODEL_ID}, {mode})\n")
     server.serve_forever()
     return 0
 
