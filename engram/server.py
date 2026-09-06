@@ -66,12 +66,20 @@ class Engram:
             used += t
             claims.append({"id": h.claim["id"], "text": h.claim["text"], "source_class": h.claim.get("source_class"),
                            "kind": h.claim.get("kind"), "store": h.store, "score": round(h.score, 3)})
+        # always-on tier (USER.md / MEMORY.md) rides in every prompt, ahead of retrieved claims
+        always = {}
+        try:
+            md = self.store.export_markdown()
+            always = {k: v for k, v in md.items() if v and "\n- " in v}
+            used += sum(_tokens(v) for v in always.values())
+        except Exception:
+            always = {}
         self.store.touch([c["id"] for c in claims])
         ti = int(req.get("turn_index", -1))
         self.injected[(session, ti)] = [c["id"] for c in claims]
         _append(self.out / "retrieval_log.jsonl", {"ts": _now(), "session": session, "turn_index": ti, "query": text,
                                                    "injected": [c["id"] for c in claims], "stores": sorted({c["store"] for c in claims})})
-        return {"claims": claims, "tokens": used}
+        return {"claims": claims, "always": always, "tokens": used}
 
     def remember(self, req: dict) -> dict:
         turn, session, ti = req.get("turn", {}), req.get("session", "default"), int(req.get("turn_index", -1))
@@ -92,8 +100,11 @@ class Engram:
         route = _try("engram.p3.router", "route_claim")
         opposing = _try("engram.p1.contradiction", "opposing_claim_ids")
         cands = []
-        if extract and text:
-            cands += extract({"role": role, "text": text}, session=session, turn_index=ti) or []
+        # Capture-first: only the HUMAN's turns are salience-tagged. Assistant text stays episodic
+        # (its thinking may yield `inferred` claims below). One claim per sentence, not per turn.
+        if extract and text and role == "user":
+            for sent in _sentences(text):
+                cands += extract({"role": role, "text": sent}, session=session, turn_index=ti) or []
         if extract_thinking and thinking and role == "assistant":
             for c in extract_thinking({"role": role, "text": text, "thinking": thinking}) or []:
                 c.setdefault("session", session); c.setdefault("turn_index", ti)
@@ -195,6 +206,12 @@ def _fts_query(text: str) -> str:
         if w not in seen:
             seen.add(w); out.append(f'"{w}"')
     return " OR ".join(out[:12])
+
+
+def _sentences(text: str) -> list[str]:
+    import re
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text.strip()) if p.strip()]
+    return parts or [text]
 
 
 def _keywords(text: str) -> list[str]:

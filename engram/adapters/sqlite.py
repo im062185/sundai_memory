@@ -347,7 +347,7 @@ class SQLiteStore(Store):
         rows = cur.execute(
             "SELECT * FROM memories WHERE status = 'promoted'"
         ).fetchall()
-        user_claims = [self._row_to_claim(r) for r in rows if r["tier"] == "always" and r["kind"] in {"profile", "preference"}]
+        user_claims = [self._row_to_claim(r) for r in rows if r["tier"] == "always" and r["kind"] in {"profile", "preference", "constraint"}]
         memory_claims = [self._row_to_claim(r) for r in rows if r["tier"] == "always" and r["kind"] in {"feedback", "procedure"}]
         return {
             "USER.md": render_user_md(user_claims, cap=USER_CHAR_LIMIT),

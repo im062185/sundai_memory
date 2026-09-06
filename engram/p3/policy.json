@@ -10,6 +10,6 @@
     "decision": "semantic",
     "episode": "episodic",
     "capability": "semantic",
-    "constraint": "semantic"
+    "constraint": "always"
   }
 }

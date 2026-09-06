@@ -20,6 +20,26 @@ def expire(state):
 def capture(state):
     """Turn the incoming AgentMessages (compaction / session file) into episode records."""
     eps = []
+    if not state["messages"]:
+        # CLI / start / micro: consolidate the episodes appended since the last consolidation
+        import json
+        log, since = state["out"] / "episodes.jsonl", ""
+        cons = state["out"] / "consolidation.jsonl"
+        if cons.exists():
+            lines = cons.read_text().splitlines()
+            if lines:
+                since = json.loads(lines[-1]).get("ts", "")
+        if log.exists():
+            for line in log.read_text().splitlines():
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if (r.get("ts") or "") > since and r.get("text"):
+                    eps.append({"turn_index": r.get("turn_index", 0), "role": r.get("role"), "text": r["text"], "thinking": r.get("thinking")})
+        state["episodes"] = eps
+        state["counts"]["captured"] = len(eps)
+        return
     for i, m in enumerate(state["messages"]):
         role = m.get("role") if isinstance(m, dict) else getattr(m, "role", None)
         content = m.get("content") if isinstance(m, dict) else getattr(m, "content", "")

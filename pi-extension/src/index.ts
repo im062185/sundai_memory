@@ -51,9 +51,12 @@ class EngramClient {
   stop() { this.proc?.kill(); }
 }
 
-function memoryMessage(claims: Array<{ text: string; source_class?: string }>): string {
+function memoryMessage(claims: Array<{ text: string; source_class?: string }>, always: Record<string, string> = {}): string {
   const tag = (s?: string) => (s === "said" ? "said" : s === "verified" ? "verified" : s === "inferred" ? "inferred" : s ?? "said");
-  return "Memory (provenance-tagged):\n" + claims.map((c) => `- [${tag(c.source_class)}] ${c.text}`).join("\n");
+  const parts = ["Memory (provenance-tagged):"];
+  for (const k of ["USER.md", "MEMORY.md"]) if (always[k]) parts.push(always[k].trim());
+  if (claims.length) parts.push("## RECALLED\n" + claims.map((c) => `- [${tag(c.source_class)}] ${c.text}`).join("\n"));
+  return parts.join("\n");
 }
 
 export default function engram(pi: ExtensionAPI) {
@@ -87,9 +90,10 @@ export default function engram(pi: ExtensionAPI) {
     turn += 1;
     lastPrompt = event.prompt;
     const r = await c.call({ op: "recall", text: event.prompt, k: 8, session, turn_index: turn });
-    if (!visible(ctx, r, "recall") || !r.claims?.length) { lastInjected = []; return; }
-    lastInjected = r.claims.map((x: any) => x.id);
-    return { message: { customType: "engram-memory", content: memoryMessage(r.claims), display: true, details: { ids: lastInjected, tokens: r.tokens } } };
+    const hasAlways = r.always && Object.keys(r.always).length > 0;
+    if (!visible(ctx, r, "recall") || (!r.claims?.length && !hasAlways)) { lastInjected = []; return; }
+    lastInjected = (r.claims ?? []).map((x: any) => x.id);
+    return { message: { customType: "engram-memory", content: memoryMessage(r.claims ?? [], r.always ?? {}), display: true, details: { ids: lastInjected, tokens: r.tokens } } };
   });
 
   // after each run → remember(user turn), then feedback with the reply text

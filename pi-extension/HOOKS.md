@@ -148,3 +148,6 @@ body fields; add it if LM Studio 400s on `store` or `max_completion_tokens`.
 
 Reproduce any of this with `python -m bench.probe_thinking --serve --port 1234`
 and the commands above.
+
+## LIVE REHEARSAL — 2026-09-06 19:15, seven beats, openai/gpt-4.1-mini
+Monday (4 user turns, one pi session via -c): each turn tagged; the two-sentence turn → 2 claims, absence claim `held` + question "Can you share a source for this absence claim?" in the trace. `engram consolidate` consumed the pending episodes. Wednesday (fresh session): memory block = `## USER` (no TypeScript, keep answers short) + `## RECALLED` facts, injected before the first model token; the model's plan was short and TypeScript-free unprompted. Correction turn refuted the held absence claim in the same turn. `engram_report` tool was called by the model when asked "is your memory helping". Beat 5 (`bench.component`) reproduces A-3. Not verified live: TUI rendering of the clarifying question (json mode does not surface `ctx.ui.notify`), forced `/compact`.

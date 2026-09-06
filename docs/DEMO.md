@@ -290,6 +290,8 @@ reach the scorecard.
 
 ## Defects found while rehearsing (for lane A / lane B, not fixed here)
 
+> **Update 19:15, lane A:** #3 and #4 fixed (constraints route to the always tier and are exported; the server tags one claim per sentence and only the human's turns). #2 is by design: held claims are not injected, the clarifying question is the visible behaviour. Live rehearsal with `openai/gpt-4.1-mini` passed all seven beats; see `pi-extension/HOOKS.md`.
+
 1. ~~**`pi-extension/src/index.ts:64`** — when the Engram server exits, the
    handler calls `ctx.ui.notify` on a context pi has already torn down, and pi
    dies with `ExtensionRunner.assertActive`. Every headless run exits
