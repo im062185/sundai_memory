@@ -125,6 +125,8 @@ def test_invalid_json_drops_the_whole_response():
 def test_missing_key_is_not_fatal(monkeypatch):
     """No fake, no key: consolidation must still finish (TDD 2.4)."""
     monkeypatch.delenv("ENGRAM_ENCODER_FAKE", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     out = encode(load_session(1), persona="Builder.")
     assert out == []
     assert stats().model_error is not None

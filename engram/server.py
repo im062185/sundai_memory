@@ -58,6 +58,7 @@ class Engram:
         text, k, session = req.get("text", ""), int(req.get("k", 5)), req.get("session", "default")
         q = _fts_query(text) if self.store.name == "sqlite" else text
         hits = self.store.query(q, k=k, session=None) if q else []  # memory is cross-session by design
+        hits = self._rerank(text, q, k, hits)
         claims, used = [], 0
         for h in hits:
             t = _tokens(h.claim["text"])
@@ -167,6 +168,30 @@ class Engram:
     def refute(self, req: dict) -> dict:
         self.store.refute(req["claim_id"], by=req.get("by"))
         return {}
+
+    def _rerank(self, text: str, q: str, k: int, hits: list):
+        """Embedding rerank over a wide keyword candidate set (ENGRAM_EMBED=1). Keyword ranking otherwise."""
+        from engram import embed as E
+        if not E.enabled() or not q:
+            return hits
+        if getattr(self, "_embedder", None) is None:
+            self._embedder = E.Embedder(self.out)
+        wide = self.store.query(q, k=max(40, k * 8), session=None)
+        if not wide:
+            return hits
+        vecs = self._embedder.embed([text] + [h.claim["text"] for h in wide])
+        qv = vecs[0]
+        if qv is None:
+            return hits
+        fts_max = max((h.score for h in wide), default=1.0) or 1.0
+        scored = []
+        for h, v in zip(wide, vecs[1:]):
+            cos = E.cosine(qv, v) if v else 0.0
+            s = 0.95 * cos + 0.05 * (h.score / fts_max)  # keyword score only breaks ties: bm25 favours short chatter
+            h.score, h.why = s, f"cos:{cos:.2f} fts:{h.score / fts_max:.2f} {h.why}"
+            scored.append(h)
+        scored.sort(key=lambda h: h.score, reverse=True)
+        return scored[:k]
 
     # ---- helpers ---------------------------------------------------------
     def _text_of(self, cid: str) -> str | None:

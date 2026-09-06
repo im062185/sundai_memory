@@ -97,7 +97,9 @@ def test_a_stub_run_yields_accuracy_null_and_judge_not_run():
     assert payload["n"] == 2, "n still reports the slice size"
 
 
-def test_no_client_means_not_run_not_zero():
+def test_no_client_means_not_run_not_zero(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     judgements, judge, notes = judge_records([record(), record()], client=None)
     assert judge == JUDGE_NOT_RUN
     assert all(j.correct is None for j in judgements)
@@ -129,7 +131,7 @@ def test_a_judged_run_names_the_judge_and_keeps_categories():
 def test_the_request_uses_the_documented_sonnet_5_shape():
     """claude-sonnet-5 rejects temperature/top_p/top_k and thinking.budget_tokens."""
     client = FakeClient([True])
-    judge_records([record()], client=client)
+    judge_records([record()], client=client, model="claude-sonnet-5")
     req = client.messages.requests[0]
     assert req["model"] == "claude-sonnet-5"
     assert not ({"temperature", "top_p", "top_k", "thinking"} & set(req))
