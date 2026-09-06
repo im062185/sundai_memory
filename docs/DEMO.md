@@ -10,6 +10,34 @@ Rehearsal timings are at the bottom.
 
 ## Before the demo — five minutes of setup
 
+### 0. Install both halves — the Node half is not optional
+
+Verified from a **fresh `git clone` of `build/engram-v2`**, not from this
+working copy:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cd pi-extension && npm ci && cd ..      # ← do not skip this
+.venv/bin/python -m pytest tests -q     # 104 passed, 1 xpassed
+```
+
+**Skipping `npm ci` does not produce an error — it produces a 60-second
+hang.** `pi-extension/src/index.ts` imports `@sinclair/typebox`, pi's TypeScript
+loader cannot resolve it without `pi-extension/node_modules`, and the run then
+stalls with **empty stdout, empty stderr, no `out/` directory, and no exit**. I
+hit exactly this in the fresh clone (killed at 60s by a watchdog, `exit=142` =
+SIGALRM). After `npm ci` the identical command exits 0. If a turn hangs and
+`out/` was never created, this is why — check `pi-extension/node_modules` first.
+
+There is no build step for the extension. `.pi/extensions/engram.ts` is a
+one-line re-export of `pi-extension/src/index.ts` and pi loads the TypeScript
+directly; `npx tsc --noEmit` is a check, not a compile.
+
+`bench/data/` is **not** in the repo — the 500-question LongMemEval release is
+gitignored. Nothing in the demo needs it: the 22-question slice is checked in at
+`tests/fixtures/longmemeval_slice.json`. You only need `bench/data/` to rebuild
+the slice from scratch.
+
 ### 1. A chat model
 
 **This is the one thing the demo cannot fake.** pi refuses to start a turn
@@ -71,7 +99,33 @@ ls out/trace.jsonl out/retrieval_log.jsonl   # both must exist
 ```
 
 If those two files are missing, the extension did not load and every beat below
-will show an empty memory.
+will show an empty memory. If the command **hangs** instead, it is step 0 —
+`npm ci` in `pi-extension/`.
+
+### 2b. Rehearse the whole path with no model at all
+
+You do not need LM Studio or a key to prove the organ fires. A scripted
+OpenAI-compatible server answers every turn with the memory Engram injected:
+
+```bash
+python -m bench.probe_thinking --serve --port 1234 --echo &
+mkdir -p /tmp/pi-demo
+cp config/models.json.example /tmp/pi-demo/models.json   # set models[0].id to "probe-model"
+PI_CODING_AGENT_DIR=/tmp/pi-demo pi --mode json -a --model lmstudio/probe-model \
+  -p "We deploy to Vercel. Never put emojis in commit messages."
+PI_CODING_AGENT_DIR=/tmp/pi-demo pi --mode json -a --model lmstudio/probe-model \
+  -p "What is our deploy target?"
+```
+
+`PI_CODING_AGENT_DIR` keeps all of this out of `~/.pi/agent`. Run from a fresh
+clone, both sessions exit 0 and the second replies:
+
+```
+memory: 1 claim(s) injected · first → - [said] We deploy to Vercel. Never put emojis in commit messages.
+```
+
+A claim written in session 1 reached a *different process's* model context in
+session 2 — which is the whole thesis, provable without a model.
 
 ### 3. A clean slate
 

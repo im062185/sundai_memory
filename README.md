@@ -9,12 +9,16 @@ merge state on `lane/d`: what is actually in the tree, what was cut, and what is
 open. Numbers that were not measured are printed as `—`, never as `0`.
 
 ```bash
-pip install -r requirements.txt
-pytest tests -q                     # 78 passed, 1 xpassed
-rm -rf out                          # the sqlite store persists; reseeding it skews the run
-python -m bench.component           # per-store retrieval, and the A-3 probe
-python -m engram report             # the five-metric scorecard
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cd pi-extension && npm ci && cd ..   # required — without it a pi turn hangs silently
+.venv/bin/python -m pytest tests -q  # 104 passed, 1 xpassed
+rm -rf out                           # the sqlite store persists; reseeding it skews the run
+.venv/bin/python -m bench.component  # per-store retrieval, and the A-3 probe
+.venv/bin/python -m engram report    # the five-metric scorecard
 ```
+
+All six lines were run against a **fresh clone of `build/engram-v2`**, not this
+working copy.
 
 The three-minute demo, beat by beat, is **[docs/DEMO.md](docs/DEMO.md)** — every
 command in it was run on this machine and every screen is copied from that run.
