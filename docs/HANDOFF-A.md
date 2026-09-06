@@ -7,8 +7,8 @@ Lane A = integrator + pi extension + stdio server + consolidation DAG. This file
 | Step | Deliverable | State | Verified how |
 |---|---|---|---|
 | 00 | probes, contracts, LANES/PROMPTS | done, pushed (ffd136d, 728526c) | fresh clone test |
-| 03 | tests/test_conformance.py, tests/test_isolation.py | pending | |
-| 04 | .github/workflows/ci.yml | pending | |
+| 03 | tests/test_conformance.py, tests/test_isolation.py | done | pytest 8 passed on NullStore |
+| 04 | .github/workflows/ci.yml | done, first run pending | local pytest; CI result unverified |
 | 08 | engram/server.py, engram/__main__.py, pi-extension/src/index.ts | pending | |
 | 09 | engram/consolidate/dag.py, tests/test_dag.py, compaction path | pending | |
 | merges | lane/b, lane/c, lane/d into build/engram-v2 | none yet | |
