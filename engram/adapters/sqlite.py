@@ -6,6 +6,7 @@ import sqlite3
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
+import math
 
 from .base import Claim, RecallHit, Store, StoreStats
 from .markdown import render_memory_md, render_user_md, USER_CHAR_LIMIT, MEMORY_CHAR_LIMIT
@@ -247,6 +248,48 @@ class SQLiteStore(Store):
             (now, claim_id),
         )
         self._conn.commit()
+
+
+    # ---- activation decay (AMD-03 §3) — integrator addition, called by the DAG's expire node ----
+    IMMUNE_KINDS = {"procedure", "feedback", "profile"}   # core/procedural memories never fade
+
+    def decay(self, *, decay_lambda: float = 0.05, dormancy_threshold: float = 0.1, now: datetime | None = None) -> int:
+        """Recompute activation from age, use and importance; mark dormant below threshold.
+
+        activation = importance/5 · e^(−λ·days_since_last_access) + 0.2·ln(1 + access_count)
+        Half-life at λ=0.05 ≈ 14 days for an untouched memory. Dormant claims stay in the
+        table (never deleted) and are revived automatically when their activation recovers
+        (e.g. importance raised or touched via deep search). Returns the number newly dormant.
+        """
+        now = now or datetime.now(timezone.utc)
+        cur = self._conn.cursor()
+        rows = cur.execute(
+            "SELECT id, kind, importance, access_count, last_accessed, created_at, status FROM memories WHERE status IN ('promoted', 'dormant')"
+        ).fetchall()
+        newly_dormant = 0
+        for row in rows:
+            ref = row["last_accessed"] or row["created_at"]
+            try:
+                then = datetime.fromisoformat(str(ref).replace("Z", "+00:00"))
+                if then.tzinfo is None:
+                    then = then.replace(tzinfo=timezone.utc)
+                days = max(0.0, (now - then).total_seconds() / 86400.0)
+            except (TypeError, ValueError):
+                days = 0.0
+            importance = float(row["importance"] or 3) / 5.0
+            access = int(row["access_count"] or 0)
+            activation = importance * math.exp(-decay_lambda * days) + 0.2 * math.log1p(access)
+            if row["kind"] in self.IMMUNE_KINDS:
+                activation = max(activation, 1.0)
+            status = row["status"]
+            if activation < dormancy_threshold and status == "promoted":
+                status = "dormant"
+                newly_dormant += 1
+            elif activation >= dormancy_threshold and status == "dormant":
+                status = "promoted"
+            cur.execute("UPDATE memories SET activation = ?, status = ? WHERE id = ?", (round(activation, 4), status, row["id"]))
+        self._conn.commit()
+        return newly_dormant
 
     def touch(self, claim_ids: Any) -> None:
         now = datetime.now(timezone.utc).isoformat()

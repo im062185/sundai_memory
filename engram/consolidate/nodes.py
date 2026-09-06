@@ -8,7 +8,13 @@ def expire(state):
     """Recompute activation; mark dormant below threshold (never delete). Lane B may provide store.decay()."""
     decay = getattr(state["store"], "decay", None)
     if decay:
-        state["counts"]["expired"] = int(decay() or 0)
+        import json
+        kw = {}
+        gens = sorted((state["out"] / "generations").glob("gen-*")) if (state["out"] / "generations").exists() else []
+        if gens and (gens[-1] / "weights.json").exists():
+            w = json.loads((gens[-1] / "weights.json").read_text())
+            kw = {"decay_lambda": float(w.get("decay_lambda", 0.05)), "dormancy_threshold": float(w.get("dormancy_threshold", 0.1))}
+        state["counts"]["expired"] = int(decay(**kw) or 0)
 
 
 def capture(state):
