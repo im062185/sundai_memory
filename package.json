@@ -1,0 +1,1 @@
+{ "name": "sundai-memory", "private": true, "version": "0.0.1", "pi": { "extensions": ["./pi-extension/src/index.ts"] } }

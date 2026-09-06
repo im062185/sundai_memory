@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "engram/claim",
+  "title": "Claim",
+  "type": "object",
+  "required": ["id", "text", "kind", "origin", "source_class", "subject", "polarity", "status", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "id":            { "type": "string", "pattern": "^clm_[a-z0-9]{8,}$" },
+    "text":          { "type": "string", "minLength": 1 },
+    "verbatim":      { "type": "boolean", "default": false },
+    "kind":          { "enum": ["profile", "preference", "constraint", "fact", "absence", "decision", "capability", "feedback", "procedure", "episode"] },
+    "origin":        { "enum": ["user_turn", "assistant_turn", "assistant_thinking", "tool_result", "trajectory"] },
+    "source_class":  { "enum": ["said", "inferred", "verified", "refuted"] },
+    "subject":       { "type": "string" },
+    "polarity":      { "enum": ["affirm", "deny"] },
+    "support_set":   { "type": "array", "items": { "type": "string" }, "default": [] },
+    "refutation_trigger": { "type": ["string", "null"], "default": null },
+    "user_reaction": { "enum": ["approving", "neutral", "correcting", "frustrated", null], "default": null },
+    "importance":    { "type": "number", "minimum": 1, "maximum": 5, "default": 3 },
+    "tier":          { "enum": ["episodic", "semantic", "procedural", "always"], "default": "episodic" },
+    "status":        { "enum": ["held", "promoted", "refuted", "dormant", "rejected"] },
+    "valid_from":    { "type": "string", "format": "date-time" },
+    "valid_to":      { "type": ["string", "null"], "format": "date-time", "default": null },
+    "supersedes":    { "type": ["string", "null"], "default": null },
+    "session":       { "type": "string" },
+    "turn_index":    { "type": "integer" },
+    "created_at":    { "type": "string", "format": "date-time" },
+    "last_accessed": { "type": ["string", "null"], "default": null },
+    "access_count":  { "type": "integer", "default": 0 },
+    "activation":    { "type": "number", "default": 1.0 }
+  },
+  "allOf": [
+    { "if": { "properties": { "origin": { "const": "assistant_thinking" } } }, "then": { "properties": { "source_class": { "const": "inferred" } } } }
+  ]
+}

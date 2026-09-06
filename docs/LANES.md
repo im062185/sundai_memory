@@ -1,0 +1,57 @@
+# LANES.md — four lanes, four people, four Claude Code sessions
+
+Showcase: confirm 19:00 vs 20:00 with the team. Integrator merges at :00 and :30.
+Everyone: clone, `git checkout build/engram-v2`, `git checkout -b lane/<letter>`, open Claude Code in the repo, paste your prompt below.
+Read first (10 min): `CLAUDE.md`, this file, `docs/AMD-03-capture-first-evolution.md`, then the TDD sections your lane names.
+
+Contracts are frozen (`schema/claim.schema.json`, `engram/adapters/base.py`, `docs/PROTOCOL.md`, `pi-extension/HOOKS.md`). If your lane needs a change, message the integrator; do not edit them.
+
+---
+
+## Lane A — Integrator, pi extension, server, consolidation DAG
+**Owns:** `pi-extension/`, `.pi/`, `engram/server.py`, `engram/__main__.py`, `engram/consolidate/`, `schema/`, `engram/adapters/base.py`, `engram/adapters/null.py`, `tests/test_conformance.py`, `tests/test_isolation.py`, `tests/test_dag.py`, `.github/`, `CLAUDE.md`, merges, final PR.
+**TDD steps:** 03, 04, 08, 09, 14. **Done when:** hooks fire in a live pi session (recall before the first token, remember after every user turn, verified from `pi --mode json` output), a forced `/compact` returns a provenance-tagged digest, and every other lane's PR is merged.
+
+Prompt for Claude Code:
+```
+You are lane A (integrator) in docs/LANES.md. Read CLAUDE.md, docs/LANES.md, docs/AMD-03-capture-first-evolution.md, docs/TDD-engram-v2.md §5.3–5.4, §6.5–6.6, §7, §8, §10, pi-extension/HOOKS.md and docs/PROTOCOL.md. Work only in the files lane A owns. Branch lane/a off build/engram-v2.
+Build, in order, committing after each: (1) tests/test_conformance.py and tests/test_isolation.py against engram/adapters/base.py, green on NullStore; (2) .github/workflows/ci.yml per TDD §8; (3) engram/server.py + engram/__main__.py implementing every op in docs/PROTOCOL.md with a pluggable store REGISTRY (NullStore until lane B lands), trace and retrieval_log writing, and `python -m engram --serve`; (4) pi-extension/src/index.ts: spawn the server, session_start → consolidate(reason start), before_agent_start → recall and inject a "Memory (provenance-tagged)" message, agent_end → remember for the user turn then feedback with the injected ids and the reply text, session_before_compact → consolidate over preparation.messagesToSummarize and return the digest as the summary, register tools engram_explain and engram_report and commands /engram-consolidate and /engram-report; if the server dies print a visible error and continue without memory; (5) engram/consolidate/dag.py as an explicit networkx DiGraph with nodes expire→capture→encode→merge→adjudicate→promote→wire→reindex→census→evolve, each node a function stub that lane B/C fill, acyclicity asserted at import, tests/test_dag.py. Use only hook names and payload shapes from pi-extension/HOOKS.md. Verify the hooks in a real pi session with --mode json and say exactly what was verified live vs. mocked. One-paragraph report per step: changed / passed / open. Blocked more than 5 minutes → stop and ask.
+```
+
+## Lane B — Capture, gate, stores
+**Owns:** `engram/p1/` (salience rules, episodic append, think.py, contradiction.py — NOT llm_assist.py), `engram/p2/`, `engram/p3/router.py` + `policy.json` (rules table), `engram/adapters/sqlite.py`, `engram/adapters/vector.py`, `engram/adapters/markdown.py`, `tests/fixtures/`, `tests/test_gate.py`, `tests/test_cuj.py`, `tests/test_stores.py`.
+**TDD steps:** 02, 05, 06, 07. **Done when:** 40+ fixture claims validate against the schema; every gate rule G1–G9 has a fixture that fails it; a conversational refutation lands in the SQLite store the same turn; naive vector arm still returns the refuted claim (A-3 recorded as xfail, do not fix); `export_markdown()` produces USER.md and MEMORY.md from the always tier.
+
+Prompt for Claude Code:
+```
+You are lane B in docs/LANES.md. Read CLAUDE.md, docs/LANES.md, docs/AMD-03-capture-first-evolution.md §1–§2, docs/TDD-engram-v2.md §5.1, §6.1–6.4, §7, schema/claim.schema.json and engram/adapters/base.py. Work only in the files lane B owns. Branch lane/b off build/engram-v2.
+Build, in order, committing after each: (1) tests/fixtures: claims.json (40+ claims drawn from this project's own design conversation, ≥8 absence claims, ≥5 gate-failing), session1.jsonl and session2.jsonl (the CUJ journey: project facts, two preferences, the SDK absence claim, then the correction "the SDK shipped batch writes in 3.4"), gate_cases.json; (2) engram/p1: rules.py as a SALIENCE TAGGER only — explicit preferences/constraints, absence patterns ("has no", "doesn't support", "there's no", "can't", "not available"), refutation and forget intents ("actually", "no longer", "forget that", "shipped in") — every emitted claim schema-valid with origin, source_class, subject, polarity filled by rule; episodic.py appends every turn verbatim as an episode record before any tagging; think.py handling both a thinking block and inline <think> tags, always origin assistant_thinking and source_class inferred; contradiction.py: same subject + opposite polarity → refute the older one; (3) engram/p2 gate G1–G9 (G9: assistant_thinking ⇒ inferred) with promote() returning (verdict, fired, question), the only module that imports adapters; tests/test_gate.py; (4) engram/adapters/sqlite.py — one file, tables memories (all schema fields) + links + episodes + retrieval_log, FTS5 virtual table, query() = FTS score × activation with one-hop link boost, refute() sets status and valid_to, touch(), link(), export_markdown(); vector.py naive numpy cosine over a hashing vectorizer whose refute is deliberately naive (A-3); markdown.py renders USER.md/MEMORY.md with character caps; register both in engram/adapters/__init__.py REGISTRY; tests/test_stores.py; (5) engram/p3/router.py + policy.json as a rules table kind → tier. No import of adapters outside p2 and p3. One-paragraph report per step: changed / passed / open. Blocked more than 5 minutes → stop and ask.
+```
+
+## Lane C — Hindsight encoder and evolution
+**Owns:** `engram/encode/` (the LLM pass that runs inside consolidation; replaces TDD `p1/llm_assist.py`), `engram/evolve/`, `prompts/`, `tests/test_encode.py`, `tests/test_evolve.py`, `out/generations/` layout.
+**Done when:** on the fixture sessions, `encode` produces schema-valid candidates with `user_reaction` filled from the following human turn and `verbatim` flagged where needed, without network (a recorded-response fake for tests, real call behind `ENGRAM_ENCODER_MODEL`); `evolve` runs three generations on the fixtures and writes `out/generations/gen-001..003/` with a fitness table that never selects a candidate that lowered recall.
+
+Prompt for Claude Code:
+```
+You are lane C in docs/LANES.md. Read CLAUDE.md, docs/LANES.md, docs/AMD-03-capture-first-evolution.md §1, §3, §4, PLAN.md §2b–2c, schema/claim.schema.json, engram/adapters/base.py and docs/PROTOCOL.md (the feedback op and retrieval_log). Work only in the files lane C owns. Branch lane/c off build/engram-v2.
+Build, in order, committing after each: (1) engram/encode/: prompts/encoder.md and encode.py — input is a window of episodes (verbatim turns) plus persona.md plus up to five related existing claims; output is JSON candidates {text, kind, verbatim, importance 1–5, subject, polarity, entities, user_reaction, supersedes}; user_reaction is read from the human turn that FOLLOWS the assistant turn; a candidate whose text appears verbatim in an episode keeps verbatim=true; invalid JSON → drop and count; the model is called through a small client with ENGRAM_ENCODER_MODEL (default claude-haiku-4-5-20251001 via the anthropic package) and a recorded-fixture fake for tests; encode never writes to stores, it returns candidates for the gate; (2) engram/evolve/: genome.py (weights.json: decay lambda, fts/activation blend, k, recall token budget, promotion and dormancy thresholds, salience keyword weights; encoder.lessons.md; persona.md; tiers.json), signals.py reading out/retrieval_log.jsonl and out/trace.jsonl (used vs ignored, user_reaction, five metrics), mutate.py producing three candidates with one change each, replay.py re-running recall over the logged queries and the fixture sessions without a live model, select.py keeping the best with revert-on-regression, and a lessons writer that appends to encoder.lessons.md per kind/source usefulness; safety rules and gate rules are never mutated; each generation written to out/generations/gen-NNN/ with a diff summary; (3) tests/test_encode.py and tests/test_evolve.py. Expose two functions for the DAG: encode(episodes, persona, related) -> list[candidate] and evolve(store, signals) -> GenerationReport. One-paragraph report per step: changed / passed / open. Blocked more than 5 minutes → stop and ask.
+```
+
+## Lane D — Eval, demo environment, pitch
+**Owns:** `bench/`, `engram/report/`, `tests/test_metrics.py`, `config/` (demo machine values), `README.md`, `docs/DEMO.md`, the slides.
+**TDD steps:** 10, 12 (≥20 questions), A-2/A-4 live probes on the demo machine. **Done when:** `engram report` prints the five-metric scorecard first (speed · accuracy · tokens · precision · recall), then memory-off, then the store table, then the LongMemEval per-category row with the judge named or `not run`, then the new line corrections per session per generation; session 1 → consolidate → session 2 runs clean twice on the demo machine; the 3-minute demo is rehearsed.
+
+Prompt for Claude Code:
+```
+You are lane D in docs/LANES.md. Read CLAUDE.md, docs/LANES.md, docs/AMD-03-capture-first-evolution.md (Benchmarks), docs/CUJ-engram-v2.md §3, §5, §8, docs/TDD-engram-v2.md §5.5, §6.7, §6.8, §9, pi-extension/HOOKS.md A-2/A-4 and docs/PROTOCOL.md. Work only in the files lane D owns. Branch lane/d off build/engram-v2.
+Build, in order, committing after each: (1) bench/metrics.py (speed, accuracy, tokens, precision, recall exactly as TDD; a returned refuted id lowers precision by 1/k) and bench/queries.json (25 multi-gold queries over tests/fixtures), tests/test_metrics.py; (2) engram/report/scorecard.py + render.py producing the report text in the order above, with the corrections-per-session-per-generation line read from out/generations/; (3) bench/longmemeval.py: download the LongMemEval release, READ its README for the file layout (do not assume), build a ≥20-question slice across all six categories, ingest via the server's remember op with the encoder disabled, answer via `pi -p --mode json` with recalled claims injected, record answer/tokens/latency; bench/judge.py scoring with claude-sonnet-5 only when ANTHROPIC_API_KEY exists, otherwise accuracy null and judge "not run"; (4) docs/DEMO.md: the 3-minute script from the CUJ §8 with exact commands, plus config/models.json.example confirmed against the real chat model on the demo machine (LM Studio if installed, else the API model the team picks) and the observed thinking format recorded into pi-extension/HOOKS.md A-2; (5) README.md: built / cut / open / A-3 outcome / judge named. One-paragraph report per step: changed / passed / open. Blocked more than 5 minutes → stop and ask.
+```
+
+---
+
+## Integration order
+1. 16:50 A: contracts frozen (done), CI up. B, C, D start against fixtures and NullStore.
+2. 17:30 first merge: B's sqlite store into A's server; C's encode/evolve stubs wired into the DAG.
+3. 18:15 second merge: end-to-end session 1 → consolidate → session 2 on the demo machine (D drives).
+4. 18:45 freeze except D's report and demo fixes. Rehearse.

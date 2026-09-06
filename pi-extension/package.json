@@ -1,0 +1,4 @@
+{ "name": "engram-pi-extension", "private": true, "version": "0.0.1", "type": "module",
+  "scripts": { "check": "tsc --noEmit", "test": "node --test" },
+  "devDependencies": { "typescript": "^5.6", "@types/node": "^22" },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" } }
