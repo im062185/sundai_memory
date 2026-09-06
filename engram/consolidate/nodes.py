@@ -4,6 +4,23 @@ from __future__ import annotations
 from engram.consolidate.dag import _opt
 
 
+def _instant(value):
+    """An ISO-8601 string as a tz-aware datetime, or None if it will not parse.
+
+    Both suffixes are in the tree: "+00:00" from datetime.isoformat() and "Z"
+    from the consolidation log. Naive stamps are read as UTC so a comparison
+    never raises on mixed awareness.
+    """
+    from datetime import datetime, timezone
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def expire(state):
     """Recompute activation; mark dormant below threshold (never delete). Lane B may provide store.decay()."""
     decay = getattr(state["store"], "decay", None)
@@ -21,21 +38,37 @@ def capture(state):
     """Turn the incoming AgentMessages (compaction / session file) into episode records."""
     eps = []
     if not state["messages"]:
-        # CLI / start / micro: consolidate the episodes appended since the last consolidation
+        # CLI / start / micro: consolidate the episodes appended since the last consolidation.
+        #
+        # Compare instants, never the ISO strings. The two writers disagree on
+        # format — episodes.jsonl carries "…50.088779+00:00", consolidation.jsonl
+        # carries "…50Z" — and '.' (46) sorts before 'Z' (90), so a string
+        # compare calls an episode written *after* the marker older than it.
+        # The cursor only moves forward, so those episodes were skipped forever.
+        #
+        # Known and deliberate: dag.py stamps the marker at whole-second
+        # resolution, so an episode written later in the same second as the
+        # previous run's marker is captured once more on the next run. That is
+        # the safe direction — merge() and the gate dedupe a repeat, nothing
+        # dedupes a memory that was never captured — but it means `captured`
+        # can overcount by the size of one turn. Do not read it as exact.
         import json
-        log, since = state["out"] / "episodes.jsonl", ""
+        log, since = state["out"] / "episodes.jsonl", None
         cons = state["out"] / "consolidation.jsonl"
         if cons.exists():
             lines = cons.read_text().splitlines()
             if lines:
-                since = json.loads(lines[-1]).get("ts", "")
+                since = _instant(json.loads(lines[-1]).get("ts"))
         if log.exists():
             for line in log.read_text().splitlines():
                 try:
                     r = json.loads(line)
                 except Exception:
                     continue
-                if (r.get("ts") or "") > since and r.get("text"):
+                ts = _instant(r.get("ts"))
+                # An episode with no parsable ts is captured, not dropped: losing a
+                # turn is worse than consolidating it twice (merge() dedupes).
+                if r.get("text") and (since is None or ts is None or ts > since):
                     eps.append({"turn_index": r.get("turn_index", 0), "role": r.get("role"), "text": r["text"], "thinking": r.get("thinking")})
         state["episodes"] = eps
         state["counts"]["captured"] = len(eps)
