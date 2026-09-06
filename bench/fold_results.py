@@ -21,7 +21,7 @@ def main(argv=None) -> int:
     results = load_results(out / "results.json") or {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "provisional": True}
     results["longmemeval"] = {"variant": jon.get("variant"), "n": jon.get("n", 0), "accuracy": jon.get("accuracy"),
                               "judge": jon.get("judge"), "per_category": jon.get("per_category", {}), "arm": "on"}
-    notes = list(results.get("notes") or [])
+    notes = [n for n in (results.get("notes") or []) if not str(n).startswith("LongMemEval memory-")]  # replace, never duplicate
     off = bench / "judgements_off.json"
     if off.is_file():
         joff = json.loads(off.read_text())

@@ -270,6 +270,13 @@ ENGRAM_STORE=vector python -m engram explain # still counts it as promoted
 
 ### 2:10 — "Is your memory helping?"
 
+> **Say the real numbers (measured 2026-09-06, README "Measured" section).** On a 22-question LongMemEval slice,
+> memory-on ties memory-off at 0.64 accuracy while injecting a median 106 tokens instead of ~1500. It wins on stated
+> facts and preferences. It loses knowledge-update 0/4 against 2/4, and that is a retrieval gap (keyword search returns
+> on-topic chatter instead of the numeric fact), not the refutation mechanism. Judge: gpt-4.1, named on the line.
+> Do not round this up. The honest sentence is: "same accuracy at a tenth of the tokens, and we know exactly which
+> category we still lose and why."
+
 Screen: **pi TUI** — type `/engram-report` (or ask, and the model calls the
 `engram_report` tool). Same text from the terminal with `python -m engram report`:
 
