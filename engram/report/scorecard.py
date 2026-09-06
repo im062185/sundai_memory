@@ -19,7 +19,6 @@ from typing import Any, Mapping
 from bench.metrics import (
     JUDGE_NOT_RUN,
     TOKENS_ESTIMATED,
-    TOKENS_MEASURED,
     AccuracyMetric,
     CorrectionsLine,
     Scorecard,
@@ -190,7 +189,8 @@ def scorecard_from_dict(data: Mapping[str, Any]) -> Scorecard:
             per_turn_mean=tok.get("per_turn_mean"),
             per_turn_p50=tok.get("per_turn_p50"),
             n=int(tok.get("n", 0)),
-            source=tok.get("source") or TOKENS_MEASURED,
+            # An unrecorded source is not evidence of a measurement.
+            source=tok.get("source") or TOKENS_ESTIMATED,
         ),
         precision=data.get("precision"),
         recall=data.get("recall"),

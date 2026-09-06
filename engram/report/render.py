@@ -183,17 +183,22 @@ def render_corrections(line: CorrectionsLine) -> str:
 # whole report
 # --------------------------------------------------------------------------
 
+def _blank(arm: str) -> Scorecard:
+    """An unrun arm. Every field None, so every field renders as a dash."""
+    return Scorecard(arm=arm, speed=SpeedMetric(), accuracy=AccuracyMetric(),
+                     tokens=TokensMetric(), precision=None, recall=None)
+
+
 def render_report(report) -> str:
     """The full report text in the fixed order. `report` is a scorecard.Report."""
     lines: list[str] = []
 
-    # 1 + 2 — the scorecard, memory-on then memory-off
-    for arm in (report.memory_on, report.memory_off):
-        if arm is None:
-            continue
-        lines.append(render_scorecard_line(arm, provisional=report.provisional))
-    if report.memory_on is None and report.memory_off is None:
-        lines.append(f"memory-on | no run recorded — {MISSING}")
+    # 1 + 2 — the scorecard, memory-on then memory-off. Both lines always
+    # print: an arm that was not run shows five dashes, so the reader sees
+    # the shape of what is missing instead of a sentence where a row belongs.
+    for name, arm in (("memory-on", report.memory_on), ("memory-off", report.memory_off)):
+        card = arm if arm is not None else _blank(name)
+        lines.append(render_scorecard_line(card, provisional=report.provisional))
 
     # 3 — the per-store table
     lines.append("")
@@ -233,3 +238,42 @@ def render_report(report) -> str:
 
 def render_lines(report) -> Sequence[str]:
     return render_report(report).split("\n")
+
+
+def render(store=None, out=None) -> str:
+    """The entry point the `report` op resolves — engram/server.py calls
+    `render(self.store, self.out)`.
+
+    The numbers come from the bench results file under `out`, not from the
+    store: this module measures nothing. The store is used only to print its
+    status census, which is a *different axis* from the provenance census
+    (status is promoted/held/refuted/dormant; provenance is
+    said/inferred/verified/refuted) and is labelled as such rather than
+    quietly filling the Provenance tier with the wrong counts.
+    """
+    from pathlib import Path
+
+    from engram.report.scorecard import DEFAULT_GENERATIONS, DEFAULT_RESULTS, build_report, load_results
+
+    root = Path(out) if out is not None else None
+    results_path = root / "results.json" if root else Path(DEFAULT_RESULTS)
+    generations = root / "generations" if root else Path(DEFAULT_GENERATIONS)
+
+    results = load_results(results_path)
+    report = build_report(results, generations)
+    if results is None:
+        report.notes.append(
+            f"no bench results at {results_path} — run `python -m bench.component` or "
+            f"`python -m bench.longmemeval` first; every number above is unmeasured, not zero"
+        )
+    stats = getattr(store, "stats", None)
+    if stats is not None:
+        try:
+            s = stats()
+            report.notes.append(
+                f"store status (not provenance): {s.name} — promoted {s.promoted}, "
+                f"held {s.held}, refuted {s.refuted}, dormant {s.dormant}"
+            )
+        except Exception as e:  # a store that cannot count itself must not kill the report
+            report.notes.append(f"store status unavailable: {type(e).__name__}: {e}")
+    return render_report(report)

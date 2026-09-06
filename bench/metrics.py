@@ -26,9 +26,17 @@ from typing import Any, Iterable, Mapping, Sequence
 # tests/test_metrics.py asserts this tuple and that the renderer follows it.
 SCORECARD_ORDER: tuple[str, ...] = ("speed", "accuracy", "tokens", "precision", "recall")
 
-# Used when a token count was not reported by the server. Labelled everywhere
-# it is used so an estimate is never mistaken for a measurement.
-TOKENS_MEASURED = "server"
+# Where a token count came from. Labelled everywhere it is used so an estimate
+# is never mistaken for a measurement.
+#
+# Read off engram/server.py, not assumed: the server's `recall` response
+# carries `tokens`, but it computes that as `max(1, len(text) // 4)` — it is
+# the server's own chars/4 estimate, not a tokenizer count. So a number that
+# came from the server is TOKENS_SERVER (an estimate), and TOKENS_MEASURED is
+# reserved for a real tokenizer/usage count from the model. Calling the
+# server's field "measured" would overstate every token number we print.
+TOKENS_MEASURED = "tokenizer"
+TOKENS_SERVER = "estimate:chars/4 (engram recall)"
 TOKENS_ESTIMATED = "estimate:chars/4"
 
 JUDGE_NOT_RUN = "not run"
@@ -54,7 +62,7 @@ class RecallObservation:
     refuted: Sequence[str] = ()
     ms: float | None = None
     injected_tokens: int | None = None
-    token_source: str = TOKENS_MEASURED
+    token_source: str = TOKENS_SERVER
     by_store: Mapping[str, Sequence[str]] = field(default_factory=dict)
     store_ms: Mapping[str, float] = field(default_factory=dict)
 
@@ -103,10 +111,11 @@ class TokensMetric:
     per_turn_mean: float | None = None
     per_turn_p50: float | None = None
     n: int = 0
-    source: str = TOKENS_MEASURED
+    source: str = TOKENS_ESTIMATED
 
     @property
     def estimated(self) -> bool:
+        """Anything that is not a real tokenizer count is an estimate."""
         return self.source != TOKENS_MEASURED
 
 
@@ -231,8 +240,8 @@ def tokens(recalls: Sequence[RecallObservation]) -> TokensMetric:
     if not counted:
         return TokensMetric(n=0)
     sources = {o.token_source for o in counted}
-    # Mixed sources degrade to "estimated" — the weaker claim wins.
-    source = TOKENS_MEASURED if sources == {TOKENS_MEASURED} else TOKENS_ESTIMATED
+    # One source: say which. Mixed: degrade to "estimated" — the weaker claim wins.
+    source = sources.pop() if len(sources) == 1 else TOKENS_ESTIMATED
     vals = [float(o.injected_tokens) for o in counted]
     return TokensMetric(
         per_turn_mean=mean(vals),

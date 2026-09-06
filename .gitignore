@@ -8,3 +8,4 @@ node_modules/
 pi-extension/dist/
 .DS_Store
 .venv/
+bench/data/

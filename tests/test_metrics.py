@@ -347,3 +347,28 @@ def test_query_set_stays_provisional_until_every_fact_key_resolves():
     assert "fact.model" in qs.unresolved
     resolved = next(q for q in qs.queries if "fact.project" in q.gold_facts)
     assert "clm_aaaaaaaa" in resolved.gold
+
+
+def test_both_arm_lines_print_even_when_nothing_ran():
+    """The first two lines are the two arms, always. An unrun arm is five
+    dashes, not a sentence — the reader sees the shape of what is missing."""
+    from engram.report.scorecard import build_report
+
+    lines = build_report(None, generations_dir="out/nonexistent").text().split("\n")
+    assert lines[0].startswith("memory-on |")
+    assert lines[1].startswith("memory-off |")
+    for line in lines[:2]:
+        assert line.count("—") >= 5, line
+        assert "0.00" not in line
+
+
+def test_the_report_op_resolves_this_lane_s_renderer(tmp_path):
+    """engram/server.py:report does `_try("engram.report.render", "render")`
+    and calls render(store, out). If the signature drifts, the server falls
+    back to a stub line and the report silently disappears."""
+    from engram.server import Engram
+
+    text = Engram(out=tmp_path).report({})["text"]
+    assert text.startswith("memory-on |")
+    assert "report lane not merged" not in text
+    assert "store status (not provenance)" in text
