@@ -123,9 +123,84 @@ def test_rendered_scorecard_line_keeps_the_order():
         remembers=[RememberObservation("t1", ms=57.0)],
     )
     line = render_scorecard_line(card)
-    positions = [line.index(name) for name in SCORECARD_ORDER]
-    assert positions == sorted(positions), line
-    assert line.count("·") == 4, line
+
+    # arm label, then exactly five "·"-separated fields, each prefixed by its
+    # metric name, in SCORECARD_ORDER. Checked by prefix rather than by
+    # substring position: the speed field legitimately contains the word
+    # "recall" (ms per recall op), which is not the recall metric.
+    assert " | " in line, line
+    arm, body = line.split(" | ", 1)
+    assert arm == "memory-on"
+    fields = [f.strip() for f in body.split("·")]
+    assert len(fields) == 5, line
+    for name, field_text in zip(SCORECARD_ORDER, fields):
+        assert field_text.startswith(name + " "), (name, field_text)
+
+    # accuracy is never a bare number: the judge is part of the value
+    accuracy_field = fields[SCORECARD_ORDER.index("accuracy")]
+    assert "judge:" in accuracy_field, accuracy_field
+
+
+def test_report_sections_appear_in_the_fixed_order():
+    """CUJ S10 + the lane D brief: scorecard on / off, store table, the three
+    labelled tiers, the LongMemEval per-category row, corrections last."""
+    scorecard = pytest.importorskip("engram.report.scorecard", reason="engram/report/ lands in lane D step 2")
+
+    results = {
+        "scorecard": {
+            "memory_on": {"arm": "memory-on", "precision": 0.9, "recall": 0.8},
+            "memory_off": {"arm": "memory-off", "precision": 0.0, "recall": 0.0},
+        },
+        "component": {"stores": {"sqlite": {"arm": "sqlite", "precision": 1.0}}},
+        "longmemeval": {"n": 20, "accuracy": None, "judge": JUDGE_NOT_RUN,
+                        "per_category": {"knowledge-update": {"accuracy": None, "n": 4}}},
+        "provenance": {"said": 12, "inferred": 3, "verified": 1, "refuted": 2},
+    }
+    text = scorecard.build_report(results, generations_dir="out/nonexistent").text()
+
+    markers = [
+        "memory-on |",
+        "memory-off |",
+        "Per-store",
+        "Outcome —",
+        "Component —",
+        "Provenance —",
+        "LongMemEval slice —",
+        "corrections per session, per generation",
+    ]
+    positions = [text.index(m) for m in markers]
+    assert positions == sorted(positions), text
+
+    # first line is the memory-on scorecard, nothing above it
+    assert text.splitlines()[0].startswith("memory-on |"), text.splitlines()[0]
+
+
+def test_component_tier_is_labelled_the_pipe_works_and_never_called_benefit():
+    """CUJ S8: component numbers are never presented as benefit."""
+    render = pytest.importorskip("engram.report.render", reason="engram/report/ lands in lane D step 2")
+    scorecard = pytest.importorskip("engram.report.scorecard")
+
+    text = scorecard.build_report(
+        {"component": {"stores": {"vector": {"arm": "vector", "precision": 0.5}}}},
+        generations_dir="out/nonexistent",
+    ).text()
+
+    component_block = text.split("Component —", 1)[1].split("Provenance —", 1)[0]
+    assert render.COMPONENT_LABEL in text
+    assert "not a claim of benefit" in component_block
+    assert "the pipe works" in text.split("Per-store", 1)[1][:80]
+
+
+def test_missing_numbers_render_as_dash_never_zero():
+    """An unmeasured metric must not read as a measured zero."""
+    render = pytest.importorskip("engram.report.render", reason="engram/report/ lands in lane D step 2")
+    scorecard = pytest.importorskip("engram.report.scorecard")
+
+    text = scorecard.report_text("out/definitely-not-here.json", "out/nonexistent")
+    assert render.MISSING in text
+    assert "0.00" not in text
+    assert "judge: not run" in text
+    assert "not measured" in text  # the corrections line
 
 
 # --------------------------------------------------------------------------
