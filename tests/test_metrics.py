@@ -372,3 +372,91 @@ def test_the_report_op_resolves_this_lane_s_renderer(tmp_path):
     assert text.startswith("memory-on |")
     assert "report lane not merged" not in text
     assert "store status (not provenance)" in text
+
+
+# --------------------------------------------------------------------------
+# the component bench — seeding, gold resolution, and the A-3 probe
+# --------------------------------------------------------------------------
+
+def test_gold_map_holds_patterns_not_ids():
+    """Claim ids are random per run (engram/p1/rules.py:40). A literal id in
+    bench/gold_map.json would be stale the moment it was written."""
+    from bench.component import GOLD_MAP
+
+    data = json.loads(GOLD_MAP.read_text())
+    for key, patterns in data["facts"].items():
+        for pattern in patterns:
+            assert not pattern.startswith("clm_"), f"{key} points at a literal claim id"
+
+
+def test_gold_resolves_against_what_the_seed_actually_wrote():
+    from bench.component import load_patterns, resolve_gold
+
+    claims = {
+        "clm_1": {"text": "Oh, correction: the SDK shipped batch writes in 3.4."},
+        "clm_2": {"text": "I never want TypeScript in the organ codebase."},
+        "clm_3": {"text": "Something else entirely."},
+    }
+    resolved = resolve_gold(load_patterns(), claims)
+    assert resolved["fact.sdk_batch_write_34"] == ["clm_1"]
+    assert resolved["pref.no_typescript"] == ["clm_2"]
+    assert "fact.judge" not in resolved  # the fixtures never state it
+
+
+def test_a_query_with_unresolved_gold_is_skipped_not_scored_zero():
+    """Scoring a query whose gold nobody ever stated measures the corpus, not
+    the retriever, and would print 0.00 where the truth is 'not asked'."""
+    from bench.component import scorable
+
+    queries = load_queries(REPO / "bench" / "queries.json").queries
+    resolved = {"fact.sdk_batch_write_34": ["clm_1"], "absence.sdk_batch_write": ["clm_2"]}
+    keep, skipped = scorable(queries, resolved)
+    assert [q.id for q in keep] == ["q09", "q24"]
+    assert "q03" in skipped  # needs fact.judge, which the fixtures never state
+    assert len(keep) + len(skipped) == len(queries)
+
+
+def test_the_seed_replays_the_cuj_journey_in_order():
+    from bench.component import seed_turns
+
+    turns = seed_turns()
+    assert [s for s, _ in turns][:2] == ["session1", "session1"]
+    assert any(t["text"].startswith("Oh, correction:") for s, t in turns if s == "session2")
+
+
+@pytest.mark.parametrize("store,still_returned", [("sqlite", False), ("vector", True)])
+def test_a3_probe_records_each_store_s_refutation(tmp_path, store, still_returned):
+    """A-3, through the product's own `refute` op rather than a unit poke.
+
+    The vector arm's refute() writes back the status it found instead of
+    "refuted", so a promoted claim keeps coming back and stats.refuted stays 0.
+    TDD §9: this is recorded, not fixed. If someone fixes it, this test tells
+    them the snapshot has to be re-taken before the finding is dropped.
+    """
+    from bench.component import a3_probe
+
+    probe = a3_probe(store, tmp_path)
+    assert probe["ran"], probe.get("why")
+    assert probe["returned_before_refute"] is True
+    assert probe["returned_after_refute"] is still_returned
+    if still_returned:
+        assert probe["stats_refuted_after"] == 0
+
+
+def test_the_report_names_the_a3_finding_from_the_probe_not_from_precision():
+    """Low precision has many causes. Only the probe can say a store handed
+    back a refuted claim, so only the probe may put A-3 in the report."""
+    from engram.report.scorecard import Report, Scorecard
+    from bench.metrics import AccuracyMetric, SpeedMetric, TokensMetric
+
+    def card(precision):
+        return Scorecard(arm="x", speed=SpeedMetric(), accuracy=AccuracyMetric(),
+                         tokens=TokensMetric(), precision=precision, recall=1.0)
+
+    quiet = Report(stores={"vector": card(0.12)})
+    assert not any("A-3" in line for line in quiet.component_lines())
+
+    loud = Report(stores={"vector": card(0.12)},
+                  a3=[{"store": "vector", "ran": True, "returned_after_refute": True,
+                       "stats_refuted_after": 0}])
+    assert any("A-3 on vector" in line for line in loud.component_lines())

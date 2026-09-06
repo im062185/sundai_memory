@@ -44,7 +44,13 @@ def fmt_ratio(value: float | None) -> str:
 
 
 def fmt_ms(value: float | None) -> str:
-    return MISSING if value is None else f"{value:.0f}ms"
+    """Sub-millisecond ops keep a decimal — a local sqlite recall really is
+    fast enough to round to 0ms, and "0ms" reads as "not measured"."""
+    if value is None:
+        return MISSING
+    if value < 10:
+        return f"{value:.1f}ms"
+    return f"{value:.0f}ms"
 
 
 def fmt_speed(speed: SpeedMetric) -> str:

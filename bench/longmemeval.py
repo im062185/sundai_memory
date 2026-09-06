@@ -297,16 +297,19 @@ def fresh_engram(out_dir: Path):
     path, one process, and the bench can read `ms` off each response exactly
     as the protocol defines it.
 
-    "Encoder disabled" (TDD §6.8) needs no switch: LLM encoding lives in the
-    consolidation DAG, and `remember` never invokes it (engram/server.py —
-    remember only appends the episode and runs the rule tagger + gate). The
-    driver simply never calls `consolidate` during ingest. Read off the
-    server, not assumed: there is no ENGRAM_ASSIST env var; the server's
-    knobs are ENGRAM_OUT, ENGRAM_STORE and ENGRAM_RECALL_TOKENS.
+    On "encoder disabled" (TDD §6.8 step 2): the TDD names `ENGRAM_ASSIST=0`,
+    but engram/server.py does not read it — its knobs are ENGRAM_OUT,
+    ENGRAM_STORE and ENGRAM_RECALL_TOKENS. The structural guarantee is
+    stronger than the flag anyway: LLM encoding lives in the consolidation
+    DAG, `remember` never invokes the DAG, and this driver never calls
+    `consolidate` during ingest. The variable is still set, in case lane C's
+    encoder reads it, and the discrepancy is written down rather than
+    silently resolved either way.
     """
     from engram.server import Engram
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["ENGRAM_ASSIST"] = "0"  # TDD §6.8; not read by server.py today
     return Engram(out=out_dir)
 
 

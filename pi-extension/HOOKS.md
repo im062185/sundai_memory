@@ -48,3 +48,90 @@ Not probed (see A-2). Template from `docs/models.md`, to be confirmed by lane D 
 ## Headless / JSON mode (for S11 and the bench)
 
 `pi --mode json "prompt"` streams `JsonAgentSessionEvent` lines; `pi -p "prompt"` prints. Filter with `jq -c 'select(.type=="message_end")'`.
+
+---
+
+# Lane D probe evidence — appended 2026-09-06, nothing above this line changed
+
+Both probes were **run**, not reasoned about. Neither wrote to `~/.pi/agent`:
+pi's own documented override `PI_CODING_AGENT_DIR=/tmp/pi-probe` pointed it at
+a throwaway config directory (`docs/environment-variables.md` line 81).
+
+LM Studio is still not installed on this machine. Rather than leave A-2 "not
+run", the probe replaced the *server* with a scripted OpenAI-compatible one
+(`bench/probe_thinking.py`) that emits each reasoning shape in turn. That
+settles the half of A-2 that is a property of pi — how each shape is
+surfaced — with certainty. The other half, *which* shape LM Studio emits for
+a given model, is still a demo-machine question and is marked as such below.
+
+## A-2 Thinking format — RUN (pi 0.85.1, api `openai-completions`)
+
+Command, three turns, one per shape:
+
+```
+PI_CODING_AGENT_DIR=/tmp/pi-probe PI_OFFLINE=1 \
+  pi -p --mode json --provider lmstudio --model probe-model --no-tools --no-session \
+     "Where should I deploy?"
+```
+
+| Turn | What the server sent | What pi produced |
+|---|---|---|
+| 1 | `delta.reasoning_content` chunks, then `delta.content` | **a thinking block** — `thinking_start` / `thinking_delta` / `thinking_end` events, and in `message_end`: `{"type":"thinking","thinking":"…","thinkingSignature":"reasoning_content"}` followed by a separate `{"type":"text",…}` |
+| 2 | `delta.content` containing `<think>…</think>` then the answer | **one text block, tags intact** — no thinking events at all; `message_end` content is a single `{"type":"text","text":"<think>Weighing the two options. Vercel is already configured.</think>Deploy to Vercel."}` |
+| 3 | `delta.content` only (control) | one text block, no thinking events |
+
+Consequences, verbatim from the events above:
+
+- **pi does not parse `<think>` tags.** Turn 2's reasoning arrived inside the
+  answer text. `p1/think.py` must strip it itself, and the episodic record
+  must not treat that text as something the assistant *said*.
+- A thinking block carries `thinkingSignature: "reasoning_content"` — the
+  provenance of the reasoning is on the block, so the two shapes are
+  distinguishable after the fact, not only at parse time.
+- The turn-level event order is `message_start` → `thinking_*` → `text_*` →
+  `message_end` → `turn_end` → `agent_end` → `agent_settled`. `agent_end`
+  carries the full `messages[]` array, which is what the `agent_end` hook in
+  A-1 receives.
+- Still a demo-machine question: **which** shape a given LM Studio model
+  emits. Both are now handled, so either answer is survivable.
+
+## A-4 LM Studio config — RUN (schema + wire, pi 0.85.1)
+
+Two probes. First, pi's own validator (`dist/core/model-config.js`,
+`ModelConfig.load`) over eight candidate files; second, the request pi
+actually put on the wire, recorded by the probe server.
+
+**Schema-required** (everything else is `TOptional` in
+`dist/core/model-config.d.ts`): the top-level `providers` object, and `id` on
+every entry of `providers.<id>.models[]`. A file missing either is rejected
+with `Invalid models.json schema`. Unknown provider fields are accepted
+silently.
+
+**Functionally required** — accepted by the schema, but the run fails:
+
+| Omitted | What happens |
+|---|---|
+| `baseUrl` | `Error: Unknown provider "lmstudio"` — the provider never registers; no request is sent |
+| `api` | `Error: Unknown provider "lmstudio"` — same |
+| `apiKey` | `No API key found for lmstudio.` — pi stops before the first request even though LM Studio needs no key. Any placeholder string works |
+
+So the minimum that actually runs is four fields: `baseUrl`, `api`,
+`apiKey` (placeholder), and `models[].id`.
+
+**What `compat` changes on the wire** (same prompt, same model, only the
+compat block differs; keys are the JSON body pi POSTed to
+`/v1/chat/completions`):
+
+| compat | message roles | body keys |
+|---|---|---|
+| *(absent)* | `developer`, `user` | `max_completion_tokens`, `messages`, `model`, `reasoning_effort`, `store`, `stream`, `stream_options` |
+| `supportsDeveloperRole:false`, `supportsReasoningEffort:false` | `system`, `user` | `max_completion_tokens`, `messages`, `model`, `store`, `stream`, `stream_options` |
+| + `supportsStore:false`, `maxTokensField:"max_tokens"` | `system`, `user` | `max_tokens`, `messages`, `model`, `stream`, `stream_options` |
+
+`config/models.json.example` carries the middle row's compat block, which is
+what `docs/models.md` in the pi package recommends for OpenAI-compatible
+local servers. The third row is the safest for a server that rejects unknown
+body fields; add it if LM Studio 400s on `store` or `max_completion_tokens`.
+
+Reproduce any of this with `python -m bench.probe_thinking --serve --port 1234`
+and the commands above.

@@ -67,6 +67,9 @@ class Report:
     provenance: ProvenanceCensus = field(default_factory=ProvenanceCensus)
     corrections: CorrectionsLine = field(default_factory=CorrectionsLine)
     pass_k: dict[str, Any] = field(default_factory=dict)
+    # bench/component.py's A-3 probe: one entry per store, each recording what
+    # that store did with a claim refuted through the product's `refute` op.
+    a3: list[dict[str, Any]] = field(default_factory=list)
     provisional: bool = False
     notes: list[str] = field(default_factory=list)
 
@@ -104,10 +107,25 @@ class Report:
             if card.precision is not None and card.precision < 1.0
         ]
         if losers:
+            # Say what low precision means, not what it might mean. Any claim
+            # returned that is not in gold costs 1/k; a returned REFUTED id
+            # costs the same 1/k and is the A-3 signature — but only the probe
+            # below can say whether that is what happened here.
             out.append(
-                f"precision below 1.00 in: {', '.join(losers)} — a store returning a refuted claim "
-                f"loses exactly 1/k per query it does it on (A-3)"
+                f"precision below 1.00 in: {', '.join(losers)} — each returned claim outside "
+                f"gold costs exactly 1/k on its query"
             )
+        for probe in self.a3:
+            if not probe.get("ran"):
+                out.append(f"A-3 probe on {probe.get('store', '?')}: not run — {probe.get('why', '')}")
+            elif probe.get("returned_after_refute"):
+                out.append(
+                    f"A-3 on {probe['store']}: a claim refuted through the `refute` op came back "
+                    f"on the very next query; the store reports {probe.get('stats_refuted_after', 0)} "
+                    f"refuted. This is the finding, recorded before it is fixed (TDD §9)."
+                )
+            else:
+                out.append(f"A-3 on {probe['store']}: refutation took effect for the next query")
         return out
 
     def provenance_lines(self) -> list[str]:
@@ -230,6 +248,7 @@ def build_report(
     component = results.get("component") or {}
     for name, card in (component.get("stores") or {}).items():
         report.stores[name] = scorecard_from_dict(card)
+    report.a3 = [p for p in (component.get("a3") or []) if isinstance(p, dict)]
 
     lme = results.get("longmemeval") or {}
     per_category = {
