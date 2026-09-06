@@ -256,7 +256,7 @@ class SQLiteStore(Store):
     def decay(self, *, decay_lambda: float = 0.05, dormancy_threshold: float = 0.1, now: datetime | None = None) -> int:
         """Recompute activation from age, use and importance; mark dormant below threshold.
 
-        activation = importance/5 · e^(−λ·days_since_last_access) + 0.2·ln(1 + access_count)
+        activation = (importance/5 + 0.2·ln(1 + access_count)) · e^(−λ·days_since_last_access)
         Half-life at λ=0.05 ≈ 14 days for an untouched memory. Dormant claims stay in the
         table (never deleted) and are revived automatically when their activation recovers
         (e.g. importance raised or touched via deep search). Returns the number newly dormant.
@@ -278,7 +278,8 @@ class SQLiteStore(Store):
                 days = 0.0
             importance = float(row["importance"] or 3) / 5.0
             access = int(row["access_count"] or 0)
-            activation = importance * math.exp(-decay_lambda * days) + 0.2 * math.log1p(access)
+            # reinforcement raises the ceiling; time pulls everything down (lane D review of a307b92)
+            activation = (importance + 0.2 * math.log1p(access)) * math.exp(-decay_lambda * days)
             if row["kind"] in self.IMMUNE_KINDS:
                 activation = max(activation, 1.0)
             status = row["status"]

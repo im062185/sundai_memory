@@ -38,3 +38,26 @@ def test_dormant_revives_when_touched(tmp_path):
     s.touch(["clm_reviveme1"] * 5)
     s.decay(now=NOW)
     assert s.by_subject("deploy target")[0]["status"] == "promoted"
+
+
+def test_one_access_is_not_immortal(tmp_path):
+    """Lane D review: a single touch must not make a claim permanent."""
+    s = _store(tmp_path)
+    s.write(make_claim(suffix="once00001", created_at=(NOW - timedelta(days=5 * 365)).isoformat(), subject="once"))
+    s.touch(["clm_once00001"])
+    s._conn.execute("UPDATE memories SET last_accessed = ? WHERE id = ?", ((NOW - timedelta(days=5 * 365)).isoformat(), "clm_once00001"))
+    s._conn.commit()
+    s.decay(now=NOW)
+    assert s.by_subject("once")[0]["status"] == "dormant"
+
+
+def test_heavier_use_survives_longer(tmp_path):
+    s = _store(tmp_path)
+    for suffix, n in (("light0001", 1), ("heavy0001", 30)):
+        s.write(make_claim(suffix=suffix, created_at=(NOW - timedelta(days=40)).isoformat(), subject=suffix))
+        s.touch([f"clm_{suffix}"] * n)
+        s._conn.execute("UPDATE memories SET last_accessed = ? WHERE id = ?", ((NOW - timedelta(days=40)).isoformat(), f"clm_{suffix}"))
+    s._conn.commit()
+    s.decay(now=NOW)
+    light, heavy = s.by_subject("light0001")[0], s.by_subject("heavy0001")[0]
+    assert heavy["activation"] > light["activation"]

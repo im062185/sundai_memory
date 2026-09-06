@@ -1,4 +1,6 @@
-"""Only p2 (the gate) and p3 (router) may import adapters; only p2 may call write/refute."""
+"""Only p2 (the gate) and p3 (router) may import adapters; only p2 may call write/refute.
+decay() also mutates status (promoted <-> dormant) and is therefore guarded too: only the
+consolidation DAG's expire node may call it."""
 import ast, pathlib, re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "engram"
@@ -30,7 +32,7 @@ def test_no_adapter_imports_outside_allowed():
 
 def test_only_gate_writes():
     bad = []
-    pat = re.compile(r"\.(write|refute)\(")
+    pat = re.compile(r"\.(write|refute|decay)\(")
     for f in ROOT.rglob("*.py"):
         if _pkg(f) in ALLOWED_WRITE or _pkg(f) == "adapters":
             continue
