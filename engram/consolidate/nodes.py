@@ -39,7 +39,7 @@ def encode(state):
         if p.exists():
             persona = p.read_text()
         state["candidates"] = list(fn(state["episodes"], persona, []) or [])
-    else:  # fallback until lane C merges: salience rules over the captured turns
+    if True:  # salience rules always run too (fast-track kinds); merge() dedupes against the encoder
         extract = _opt("engram.p1.rules", "extract_claims")
         route = _opt("engram.p3.router", "route_claim")
         if extract:
@@ -79,11 +79,29 @@ def promote(state):
     for c in state["candidates"]:
         if gate is None:
             break
+        _normalize(c, state)
         verdict, fired, _q = gate(c, state["store"])
         if verdict == "promoted":
             n += 1
             state["digest_lines"].append(f"- [{c.get('source_class', 'said')}] {c.get('text', '')}")
     state["counts"]["promoted"] = n
+
+
+def _normalize(c: dict, state) -> None:
+    """Encoder candidates carry no id/status/timestamps by contract; the DAG fills them before the gate."""
+    import time, uuid
+    c.setdefault("id", "clm_" + uuid.uuid4().hex[:12])
+    c.setdefault("status", "held")
+    c.setdefault("origin", "user_turn")
+    c.setdefault("source_class", "said")
+    c.setdefault("polarity", "affirm")
+    c.setdefault("kind", "fact")
+    c.setdefault("subject", (c.get("text") or "")[:40].lower())
+    c.setdefault("session", "consolidate")
+    c.setdefault("turn_index", 0)
+    c.setdefault("created_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    if c.get("origin") == "assistant_thinking":
+        c["source_class"] = "inferred"
 
 
 def wire(state):
