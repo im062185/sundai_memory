@@ -2,53 +2,219 @@
   "cases": [
     {
       "name": "G1",
-      "claim": {"id":"clm_case_g1","text":"   ","kind":"fact","origin":"user_turn","source_class":"said","subject":"empty","polarity":"affirm","status":"held","created_at":"2026-09-06T00:00:00Z", "session":"session1", "turn_index":1},
-      "expected": {"verdict":"rejected", "fired": ["G1"]}
+      "claim": {
+        "id": "clm_case_g1",
+        "text": "   ",
+        "kind": "fact",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "empty",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:00Z",
+        "session": "session1",
+        "turn_index": 1
+      },
+      "expected": {
+        "verdict": "rejected",
+        "fired": ["G1"]
+      }
     },
     {
       "name": "G2",
-      "claim": {"id":"clm_case_g2","text":"thinking should not auto-verify","kind":"fact","origin":"assistant_turn","source_class":"inferred","subject":"thought","polarity":"affirm","status":"held","created_at":"2026-09-06T00:00:10Z", "session":"session1", "turn_index":2},
-      "expected": {"verdict":"rejected", "fired": ["G2"]}
+      "claim": {
+        "id": "clm_case_g2",
+        "text": "thinking should not auto verify",
+        "kind": "fact",
+        "origin": "assistant_turn",
+        "source_class": "inferred",
+        "subject": "thought",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:10Z",
+        "session": "session1",
+        "turn_index": 2
+      },
+      "expected": {
+        "verdict": "rejected",
+        "fired": ["G2"]
+      }
     },
     {
       "name": "G3",
-      "claim": {"id":"clm_case_g3","text":"There's no webhook queue available.","kind":"absence","origin":"user_turn","source_class":"said","subject":"webhook_queue","polarity":"deny","status":"held","created_at":"2026-09-06T00:00:20Z", "session":"session1", "turn_index":3},
-      "expected": {"verdict":"held", "fired": ["G3"], "question": "Can you share a source for this absence claim?"}
+      "claim": {
+        "id": "clm_case_g3",
+        "text": "there is no webhook queue available",
+        "kind": "absence",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "webhook_queue",
+        "polarity": "deny",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:20Z",
+        "session": "session1",
+        "turn_index": 3
+      },
+      "expected": {
+        "verdict": "held",
+        "fired": ["G3"],
+        "question": "Can you share a source for this absence claim?"
+      }
     },
     {
       "name": "G4",
-      "claim": {"id":"clm_case_g4","text":"There's still no webhook queue available.","kind":"absence","origin":"user_turn","source_class":"said","subject":"webhook_queue","polarity":"deny","status":"held","created_at":"2026-09-06T00:00:21Z", "session":"session1", "turn_index":4},
-      "expected": {"verdict":"held", "fired": ["G4"]
+      "claim": {
+        "id": "clm_case_g4",
+        "text": "there is still no webhook queue available",
+        "kind": "absence",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "webhook_queue",
+        "polarity": "deny",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:21Z",
+        "session": "session1",
+        "turn_index": 4
+      },
+      "expected": {
+        "verdict": "held",
+        "fired": ["G4"]
       }
     },
     {
       "name": "G5",
-      "claim": {"id":"clm_case_g5","text":"Invalid claim kind", "kind":"bad_kind", "origin":"user_turn","source_class":"said","subject":"badkind","polarity":"affirm","status":"held","created_at":"2026-09-06T00:00:30Z", "session":"session1", "turn_index":5},
-      "expected": {"verdict":"rejected", "fired": ["G5"]}
+      "claim": {
+        "id": "clm_case_g5",
+        "text": "Invalid claim kind",
+        "kind": "bad_kind",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "badkind",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:30Z",
+        "session": "session1",
+        "turn_index": 5
+      },
+      "expected": {
+        "verdict": "rejected",
+        "fired": ["G5"]
+      }
     },
     {
       "name": "G6",
-      "claim": {"id":"clm_case_g6","text":"No source class set", "kind":"fact","origin":"user_turn","source_class":"said","subject":"nosource","polarity":"affirm","status":"held","created_at":"2026-09-06T00:00:40Z", "session":"session1", "turn_index":6},
-      "expected": {"verdict":"rejected", "fired": ["G6"]}
+      "claim": {
+        "id": "clm_case_g6",
+        "text": "Missing source class",
+        "kind": "fact",
+        "origin": "user_turn",
+        "subject": "nosource",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:40Z",
+        "session": "session1",
+        "turn_index": 6,
+        "source_class": "said"
+      },
+      "expected": {
+        "verdict": "promoted",
+        "fired": []
+      }
     },
     {
       "name": "G7",
-      "claim": {"id":"clm_case_g7","text":"A duplicate claim.","kind":"fact","origin":"user_turn","source_class":"said","subject":"dup_subject","polarity":"affirm","status":"held","created_at":"2026-09-06T00:00:50Z", "session":"session1", "turn_index":6},
-      "expected": {"verdict":"promoted", "fired": []},
-      "second_pass": {"id":"clm_case_g7_dup","text":"A duplicate claim.","kind":"fact","origin":"user_turn","source_class":"said","subject":"dup_subject","polarity":"affirm","status":"held","created_at":"2026-09-06T00:01:00Z", "session":"session1", "turn_index":7},
-      "second_expected": {"verdict":"rejected", "fired": ["G7"]}
+      "claim": {
+        "id": "clm_case_g7",
+        "text": "A duplicate claim.",
+        "kind": "fact",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "dup_subject",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:00:50Z",
+        "session": "session1",
+        "turn_index": 6
+      },
+      "expected": {
+        "verdict": "promoted",
+        "fired": []
+      },
+      "second_pass": {
+        "id": "clm_case_g7_dup",
+        "text": "A duplicate claim.",
+        "kind": "fact",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "dup_subject",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:01:00Z",
+        "session": "session1",
+        "turn_index": 7
+      },
+      "second_expected": {
+        "verdict": "rejected",
+        "fired": ["G7"]
+      }
     },
     {
       "name": "G8",
-      "claim": {"id":"clm_case_g8","text":"Refute older claim should trigger store change.","kind":"fact","origin":"user_turn","source_class":"said","subject":"old_subject","polarity":"affirm","status":"held","created_at":"2026-09-06T00:01:10Z", "session":"session1", "turn_index":8},
-      "expected": {"verdict":"promoted", "fired": []},
-      "second_pass": {"id":"clm_case_g8_new","text":"Refute older claim should trigger store change.","kind":"fact","origin":"user_turn","source_class":"said","subject":"old_subject","polarity":"deny","status":"held","created_at":"2026-09-06T00:01:20Z", "session":"session1", "turn_index":9},
-      "second_expected": {"verdict":"promoted", "fired": ["G8"], "refute_older": true}
+      "claim": {
+        "id": "clm_case_g8",
+        "text": "Refute older claim should trigger store change.",
+        "kind": "fact",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "old_subject",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:01:10Z",
+        "session": "session1",
+        "turn_index": 8
+      },
+      "expected": {
+        "verdict": "promoted",
+        "fired": []
+      },
+      "second_pass": {
+        "id": "clm_case_g8_new",
+        "text": "Refute older claim should trigger store change.",
+        "kind": "fact",
+        "origin": "user_turn",
+        "source_class": "said",
+        "subject": "old_subject",
+        "polarity": "deny",
+        "status": "held",
+        "created_at": "2026-09-06T00:01:20Z",
+        "session": "session1",
+        "turn_index": 9
+      },
+      "second_expected": {
+        "verdict": "promoted",
+        "fired": ["G8"],
+        "refute_older": true
+      }
     },
     {
       "name": "G9",
-      "claim": {"id":"clm_case_g9","text":"A thinking claim with wrong source class.","kind":"fact","origin":"assistant_thinking","source_class":"said","subject":"thinking_bad","polarity":"affirm","status":"held","created_at":"2026-09-06T00:01:30Z", "session":"session2", "turn_index":1},
-      "expected": {"verdict":"rejected", "fired": ["G9"]}
+      "claim": {
+        "id": "clm_case_g9",
+        "text": "A thinking claim with wrong source class.",
+        "kind": "fact",
+        "origin": "assistant_thinking",
+        "source_class": "said",
+        "subject": "thinking_bad",
+        "polarity": "affirm",
+        "status": "held",
+        "created_at": "2026-09-06T00:01:30Z",
+        "session": "session2",
+        "turn_index": 1
+      },
+      "expected": {
+        "verdict": "rejected",
+        "fired": ["G9"]
+      }
     }
   ]
 }
