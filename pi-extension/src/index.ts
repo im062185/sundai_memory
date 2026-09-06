@@ -22,6 +22,9 @@ class EngramClient {
   start(cwd: string) {
     const py = [join(REPO, ".venv", "bin", "python"), "python3", "python"].find((p) => p === "python3" || p === "python" || existsSync(p))!;
     this.proc = spawn(py, ["-m", "engram", "--serve"], { cwd: REPO, env: { ...process.env, ENGRAM_OUT: join(cwd, "out") } });
+    // never keep pi's event loop alive (print mode must exit when the turn ends)
+    this.proc.unref();
+    for (const s of [this.proc.stdin, this.proc.stdout, this.proc.stderr]) (s as any).unref?.();
     const rl = createInterface({ input: this.proc.stdout });
     rl.on("line", (line) => {
       const next = this.queue.shift();

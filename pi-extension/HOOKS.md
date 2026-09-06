@@ -48,3 +48,16 @@ Not probed (see A-2). Template from `docs/models.md`, to be confirmed by lane D 
 ## Headless / JSON mode (for S11 and the bench)
 
 `pi --mode json "prompt"` streams `JsonAgentSessionEvent` lines; `pi -p "prompt"` prints. Filter with `jq -c 'select(.type=="message_end")'`.
+
+## LIVE VERIFICATION — 2026-09-06 18:25, pi 0.85.1, model openai/gpt-4.1-mini (S11 evidence)
+
+Command shape: `pi --mode json --model openai/gpt-4.1-mini -a -p "<prompt>"` in the repo, twice (two separate sessions).
+`-a` approves project trust for the run: **non-interactive pi skips `.pi/extensions` without a saved trust decision** (docs/security.md). Interactive users accept the trust prompt once; it is saved in `~/.pi/agent/trust.json`.
+
+Observed in the JSON event stream and `out/*.jsonl`:
+- Session 1: user turn → `remember` (user, promoted) → assistant reply → `remember` (assistant, promoted) → `feedback` logged. No memory injected (empty store). ✔
+- Session 2 (fresh process): `message_start role=custom customType=engram-memory "Memory (provenance-tagged): …"` appears **before** `message_start role=assistant` → recall fired before the first model token. ✔
+- Session 2 reply: "Our deploy target is Vercel, and your rule is to never include emojis in commit messages." → the model used the injected memory (S3a + S3b). ✔
+- `retrieval_log.jsonl`: session 2 recall injected 2 claims, feedback marked 2 used. ✔
+- Extension exit: server child is `unref()`'d so print mode exits when the turn ends (earlier hang fixed).
+Not yet verified live: forced `/compact` returning the digest (A-6), and the clarifying-question notify path in the TUI.
