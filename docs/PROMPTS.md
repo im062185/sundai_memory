@@ -67,3 +67,21 @@ Build in this order, run the tests, and commit after each step with subject "lan
 (5) README.md: what was built, what was cut, what is open, the A-3 outcome (the vector arm returning refuted claims), the judge named. Then rehearse the demo twice end to end and note timings in docs/DEMO.md.
 Rules: never invent benchmark numbers or dataset layouts; every accuracy number carries the judge's name or "not run"; state what was verified and how. One-paragraph report per step: changed / passed / open. If blocked more than 5 minutes, stop and ask me.
 ```
+
+---
+
+## Lane C — part 2: evolution + encoder tests (paste into the SAME lane C session, or a fresh one)
+
+```
+CONTINUE LANE C. First sync: git fetch && git checkout lane/c && git merge origin/build/engram-v2 --no-edit (lane A merged my encoder and wired it into the DAG; take their version on any conflict in files outside engram/encode, engram/evolve, prompts, tests/test_encode.py, tests/test_evolve.py). Run .venv/bin/python -m pytest tests -q and confirm it is green before writing code.
+Read engram/consolidate/nodes.py (the encode and evolve nodes: evolve is called as evolve(store, None, out/"generations") and the node reads .generation from the returned object or dict), engram/server.py (recall/feedback write out/retrieval_log.jsonl; remember writes out/trace.jsonl; reuse engram.server._fts_query when you replay recall against the sqlite store, because FTS5 needs an OR-query of keywords), and engram/adapters/sqlite.py (query, touch, link, by_subject, stats).
+Log record shapes you will read, exactly as written today:
+- out/retrieval_log.jsonl recall records: {"ts","session","turn_index","query","injected":[claim ids],"stores":[...]}; feedback records: {"ts","session","turn_index","kind":"feedback","injected":[ids],"used":[ids]}
+- out/trace.jsonl remember records: {"ts","op":"remember","session","turn_index","role","episode","tagged":[ids],"gate":{id:{"verdict","fired"}},"refuted":[ids],"question"}
+Build, in order, running the suite and committing after each with subject "lane-c: …", then push:
+(1) tests/test_encode.py, fixture-driven with ENGRAM_ENCODER_FAKE=1 and no network: verbatim strings preserved exactly, user_reaction taken from the human turn that FOLLOWS the assistant turn, invalid JSON dropped and counted on EncodeStats, encode never touches a store.
+(2) engram/evolve/ with a package __init__ exporting evolve(store, signals, generations_dir) -> GenerationReport (a dataclass with .generation int, .selected str, .fitness dict, .parent_fitness dict, .diff str). genome.py: the four files weights.json (decay_lambda, fts_activation_blend, k, recall_token_budget, promotion_threshold, dormancy_threshold, salience_keyword_weights), encoder.lessons.md, persona.md, tiers.json, with load/save/diff; gen-000 is created from defaults if generations_dir is empty. signals.py: read the two logs above; per injected id used or ignored; per session the count of refuted claims and of questions (proxy for corrections); if signals is None, compute them from the logs under generations_dir.parent. mutate.py: three candidates, one change each (a numeric weight ±20 %, one lesson line derived from signals, one tier move). replay.py: rerun recall for every logged query against the store passed in, with the candidate's k and blend, no live model; fitness = recall@k of previously-used ids (up), tokens injected (down), corrections (down), median recall ms (down). select.py: keep the best, keep the parent when nothing improves, never mutate gate or safety rules, write generations_dir/gen-NNN/{weights.json,encoder.lessons.md,persona.md,tiers.json,fitness.json,DIFF.md}. lessons.py: append "kind X from origin Y: stored N, retrieved M, used U" lines.
+(3) tests/test_evolve.py: seed a temp sqlite store with tests/fixtures claims and a synthetic retrieval_log; run evolve three times; assert gen-001..003 exist, fitness.json has the four numbers, a candidate that lowers recall is never selected, the parent is kept when nothing improves, weights.json never contains gate rules.
+(4) engram/encode/README.md: env vars, the two entry points, fixture coverage.
+Do not edit files outside lane C. One-paragraph report per step: changed / passed / open. Blocked more than 5 minutes → stop and ask.
+```
