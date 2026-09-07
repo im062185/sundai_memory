@@ -1,4 +1,4 @@
-# Engram
+# Hippo
 
 A self-managing memory organ for **pi**. It fires from pi's lifecycle hooks —
 `recall` before every turn, `remember` after every user turn — so the model
@@ -14,10 +14,10 @@ cd pi-extension && npm ci && cd ..   # required — without it a pi turn hangs s
 .venv/bin/python -m pytest tests -q  # 104 passed, 1 xpassed
 rm -rf out                           # the sqlite store persists; reseeding it skews the run
 .venv/bin/python -m bench.component  # per-store retrieval, and the A-3 probe
-.venv/bin/python -m engram report    # the five-metric scorecard
+.venv/bin/python -m hippo report    # the five-metric scorecard
 ```
 
-All six lines were run against a **fresh clone of `build/engram-v2`**, not this
+All six lines were run against a **fresh clone of `build/hippo-v2`**, not this
 working copy.
 
 The three-minute demo, beat by beat, is **[docs/DEMO.md](docs/DEMO.md)** — every
@@ -28,7 +28,7 @@ command in it was run on this machine and every screen is copied from that run.
 ## What was built
 
 **The organ fires structurally.** A 141-line TypeScript pi extension
-(`pi-extension/src/index.ts`) spawns Engram as a Python stdio server and wires
+(`pi-extension/src/index.ts`) spawns hippo as a Python stdio server and wires
 four hooks: `session_start → consolidate`, `before_agent_start → recall` (which
 injects a `Memory (provenance-tagged):` message), `agent_end → remember` for the
 user turn and the assistant turn, then `feedback` with the injected ids.
@@ -40,12 +40,12 @@ summary instead of a model-written one; that code path was **not exercised** in
 my rehearsal — it needs a forced `/compact` in an interactive session.
 
 **Capture first.** Every turn is appended verbatim to the episodic log before
-anything judges it (`engram/p1/episodic.py`). The per-turn path only *tags
+anything judges it (`hippo/p1/episodic.py`). The per-turn path only *tags
 salience* — explicit preferences, absence claims, refutations — with rules, not
-a model (`engram/p1/rules.py`). Nothing is thrown away because a per-turn
+a model (`hippo/p1/rules.py`). Nothing is thrown away because a per-turn
 extractor did not see the point of it yet.
 
-**Only the gate writes.** `engram/p2/gate.py` is the sole writer to any store;
+**Only the gate writes.** `hippo/p2/gate.py` is the sole writer to any store;
 `tests/test_isolation.py` fails the build if anything else calls `write` or
 `refute`. Nothing is ever hard-deleted — refutation sets `status` and
 `valid_to`, so a corrected belief keeps its id and its history.
@@ -53,12 +53,12 @@ extractor did not see the point of it yet.
 **Consolidation is a DAG, with hindsight.** `expire → capture → encode → merge →
 adjudicate → promote → wire → reindex → census → evolve`, an explicit
 `networkx.DiGraph` whose acyclicity is asserted at import
-(`engram/consolidate/`). LLM encoding lives here, not in the turn loop, so it
+(`hippo/consolidate/`). LLM encoding lives here, not in the turn loop, so it
 judges a turn knowing what came after it.
 
 **Two retrieval stores behind one frozen interface.** `sqlite` (FTS5, with a
 link boost weighted 0.2) and a naive numpy `vector` arm, both implementing
-`engram/adapters/base.py`. Two more adapters ship alongside them and are not
+`hippo/adapters/base.py`. Two more adapters ship alongside them and are not
 retrieval stores: `markdown` (export) and `null`. The demo says *two stores*,
 and it means the two that answer queries.
 
@@ -74,7 +74,7 @@ is `len(text)//4`, not a tokenizer count.
 
 ## The A-3 outcome: the vector arm still returns refuted claims
 
-**It reproduces.** `engram/adapters/vector.py:93` writes back the status it
+**It reproduces.** `hippo/adapters/vector.py:93` writes back the status it
 found instead of `"refuted"`:
 
 ```python
@@ -172,7 +172,7 @@ patched — two live in other lanes' code and the first is pi's own behaviour
 2. **Held claims are unreachable**, so on the correction turn `recall` injects
    nothing — the model is corrected without seeing what it is correcting.
 3. **`export_markdown()` renders nothing**: no claim on the CUJ journey is
-   assigned tier `always`, so `engram explain`'s "About you" and "Standing notes"
+   assigned tier `always`, so `hippo explain`'s "About you" and "Standing notes"
    are empty even with six promoted claims.
 
 A fourth, the extension killing pi at exit, was **fixed by lane A** in
@@ -196,8 +196,8 @@ first is doing its job — the verbatim turn is in `out/episodes.jsonl` — but 
 tagging granularity is a real gap, and hindsight encoding in consolidation is
 where it should be closed.
 
-**`ENGRAM_ASSIST` is named by TDD §6.8 and read by nothing.** The bench driver
-sets it to disable the encoder during ingest; `engram/server.py` does not look at
+**`hippo_ASSIST` is named by TDD §6.8 and read by nothing.** The bench driver
+sets it to disable the encoder during ingest; `hippo/server.py` does not look at
 it. The discrepancy is recorded in `bench/longmemeval.py` rather than resolved in
 one direction silently.
 
@@ -209,7 +209,7 @@ one direction silently.
 ## Layout
 
 ```
-engram/            the organ: server, p1 capture, p2 gate, p3 router,
+hippo/            the organ: server, p1 capture, p2 gate, p3 router,
                    encode, consolidate DAG, adapters, report
 pi-extension/      the pi extension (TypeScript) + HOOKS.md probe evidence
 bench/             metrics, query set, component bench, LongMemEval driver,
@@ -219,7 +219,7 @@ schema/            claim.schema.json (frozen)
 ```
 
 Frozen contracts — changed only by agreement of all four lanes:
-`schema/claim.schema.json`, `engram/adapters/base.py`, `docs/PROTOCOL.md`,
+`schema/claim.schema.json`, `hippo/adapters/base.py`, `docs/PROTOCOL.md`,
 `pi-extension/HOOKS.md`.
 
 No network in the tests or the chat loop. `bench/judge.py` is the only file that
